@@ -30,7 +30,9 @@ External Traffic
 
 - `values.yaml` - Helm chart configuration for nginx ingress controller
 - `deploy-nginx.sh` - Deployment script
-- `example-ingress.yaml` - Example Ingress resources for TFE
+- `setup-tls-cert.sh` - Script to fetch TLS certificate from Vault PKI
+- `tls-termination-ingress.yaml` - Ingress resource for TLS termination mode (Story-10)
+- `example-ingress.yaml` - Example Ingress resources for TFE (both TLS options)
 - `README.md` - This file
 
 ## Prerequisites
@@ -122,7 +124,7 @@ curl -kI https://localhost
 
 ## Configuration Options
 
-### Option 1: TLS Termination at nginx
+### Option 1: TLS Termination at nginx (Story-10 - IMPLEMENTED)
 
 In this mode:
 - nginx handles TLS termination
@@ -130,10 +132,52 @@ In this mode:
 - Simpler certificate management
 - nginx handles all HTTPS-related work
 
-Setup:
-1. Create TLS certificate secret
-2. Apply Ingress resource with tls section
-3. TFE service should expose HTTP port (80)
+**Files:**
+- `setup-tls-cert.sh` - Script to fetch TLS certificate from Vault PKI
+- `tls-termination-ingress.yaml` - Ingress resource for TLS termination
+
+**Setup Steps:**
+
+1. **Fetch TLS certificate from Vault:**
+   ```bash
+   cd /Users/larry.song/work/hashicorp/tfe-setup/manifests/nginx
+   ./setup-tls-cert.sh
+   ```
+   This script:
+   - Retrieves Vault root token from `vault-keys` secret
+   - Issues certificate from Vault PKI intermediate CA
+   - Creates `tfe-tls-cert` secret with cert and key
+   - Certificate TTL: 90 days (2160h)
+
+2. **Apply Ingress resource:**
+   ```bash
+   kubectl apply -f tls-termination-ingress.yaml --context kind-tfe
+   ```
+
+3. **Verify Ingress:**
+   ```bash
+   kubectl get ingress -n tfe --context kind-tfe
+   kubectl describe ingress tfe-ingress-termination -n tfe --context kind-tfe
+   ```
+
+**Important Notes:**
+- TFE service should expose HTTP port (80)
+- TLS certificate is stored in `tfe-tls-cert` secret in `tfe` namespace
+- Certificate must include `tfe.tfe.local` in SAN or CN
+- Vault PKI role `tfe-cert` is configured for `tfe.local` domain
+- Certificate includes full chain (intermediate + root CA)
+
+**Verification (once TFE is running):**
+```bash
+# Add entry to /etc/hosts
+echo "127.0.0.1 tfe.tfe.local" | sudo tee -a /etc/hosts
+
+# Test HTTPS access (should work once TFE is deployed)
+curl -Iv https://tfe.tfe.local
+
+# Should see TFE web UI in browser
+open https://tfe.tfe.local
+```
 
 ### Option 2: TLS Passthrough
 
@@ -162,11 +206,26 @@ open https://tfe.tfe.local
 
 ## TLS Certificate Setup
 
-### Using Vault PKI
+### Using Vault PKI (Recommended)
+
+The easiest way to get a TLS certificate is to use the provided script:
+
+```bash
+cd /Users/larry.song/work/hashicorp/tfe-setup/manifests/nginx
+./setup-tls-cert.sh
+```
+
+This script:
+- Retrieves Vault root token from `vault-keys` secret
+- Issues certificate from Vault PKI intermediate CA
+- Creates `tfe-tls-cert` secret with cert and key
+- Certificate TTL: 90 days (2160h)
+
+**Manual Certificate Issuance:**
 
 See `manifests/vault/README.md` for instructions on setting up Vault PKI.
 
-To issue certificate for TFE:
+To issue certificate for TFE manually:
 
 ```bash
 # Run from k8s cluster

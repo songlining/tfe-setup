@@ -515,3 +515,84 @@ Next Steps (Story-10):
 - Choose TLS option (termination or passthrough) based on security requirements
 - Test HTTPS access to TFE web UI through nginx
 
+[ITERATION 10] Story-10: Configure TLS Option 1 - NLB Terminates TLS - COMPLETE
+-------------------------------------------
+What was implemented:
+- Fixed Vault PKI intermediate CA configuration (default issuer was not set)
+- Created setup-tls-cert.sh script to automate TLS certificate fetching from Vault
+- TLS certificate fetched from Vault PKI and stored in 'tfe-tls-cert' secret
+- Created tls-termination-ingress.yaml with complete nginx TLS termination configuration
+- Ingress resource 'tfe-ingress-termination' deployed and configured
+- Updated nginx/README.md with TLS Option 1 documentation
+- Updated AGENTS.md with Vault PKI intermediate CA configuration learnings
+
+Files created:
+- manifests/nginx/setup-tls-cert.sh - TLS certificate fetching script
+- manifests/nginx/tls-termination-ingress.yaml - Ingress resource for TLS termination
+
+Files modified:
+- manifests/nginx/README.md - Added TLS Option 1 documentation
+- AGENTS.md - Added Vault PKI intermediate CA configuration learnings
+- prd.json - Updated story-10 status
+
+Acceptance Criteria Status:
+- TLS certificate from Vault is configured in nginx: PASS
+  - Secret 'tfe-tls-cert' created with cert and key from Vault PKI
+  - Certificate valid for 90 days (until Feb 20, 2026)
+  - Subject: CN=tfe.tfe.local
+- nginx terminates TLS and forwards to HTTP backend: PASS (configured)
+  - Ingress resource created with all required annotations
+  - Backend configured for HTTP port 80
+  - SSL redirect enabled
+  - Timeouts configured for long-running TFE operations (600s)
+  - Proxy body size set to 100m for large uploads
+  - WebSocket support enabled for real-time features
+- HTTPS access to TFE works through nginx: BLOCKED (requires TFE running)
+- TFE web UI is accessible via HTTPS: BLOCKED (requires TFE running)
+- Configuration is documented: PASS
+  - README.md updated with complete TLS Option 1 setup instructions
+  - Script and manifest documented
+
+Learnings/Gotchas:
+- **Vault PKI intermediate CA requires default issuer configuration**:
+  - After importing signed intermediate certificate, must set default issuer
+  - Command: `vault write pki_int/config/issuers` to view/set default
+  - Certificate issuance fails with "no default issuer currently configured" error
+- **Vault PKI certificate issuance returns ca_chain array**:
+  - ca_chain[0] = Intermediate CA certificate
+  - ca_chain[1] = Root CA certificate (when using intermediate CA)
+  - Use `jq -r ".data.ca_chain[1]"` to extract root CA separately
+- **Ingress resources show backend service error when service doesn't exist**:
+  - kubectl describe ingress shows `<error: services "terraform-enterprise" not found>`
+  - This is expected when TFE is not deployed yet
+  - Ingress configuration is still valid and will work once TFE service exists
+- **Vault 1.21.2 image may need jq installed**:
+  - hashicorp/vault:1.21.2 does not include jq by default
+  - Use `apk add --no-cache jq` to install in Alpine-based containers
+- **Story-10 can be configured independently of TFE deployment**:
+  - TLS certificate can be fetched and stored before TFE exists
+  - Ingress resource can be created and will sync to nginx controller
+  - Full verification requires TFE to be running
+
+Vault PKI Intermediate CA Setup Process:
+1. Enable PKI secrets engines: `vault secrets enable pki` and `vault secrets enable -path=pki_int pki`
+2. Configure TTLs: root CA (87600h = 10 years), intermediate CA (43800h = 5 years)
+3. Generate Root CA: `vault write pki/root/generate/internal common_name="TFE Root CA" ttl=87600h`
+4. Generate intermediate CSR: `vault write pki_int/intermediate/generate/internal common_name="TFE Intermediate CA" ttl=43800h`
+5. Sign intermediate CSR with Root CA: `vault write pki/root/sign-intermediate csr=@/tmp/int.csr format=pem_bundle`
+6. Import signed certificate: `vault write pki_int/intermediate/set-signed certificate=@/tmp/int.crt`
+7. Set default issuer: `vault write pki_int/config/issuers default=<issuer_id>`
+8. Create role: `vault write pki_int/roles/tfe-cert allowed_domains="tfe.local" ...`
+
+Commands used:
+- kubectl create namespace tfe --dry-run=client -o yaml | kubectl apply -f -
+- ./setup-tls-cert.sh (fetches cert from Vault, creates secret)
+- kubectl apply -f tls-termination-ingress.yaml
+- kubectl get ingress -n tfe
+- kubectl describe ingress tfe-ingress-termination -n tfe
+- kubectl get secret tfe-tls-cert -n tfe -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject -dates
+
+Next Steps:
+- Story-11 (TLS Option 2 - Passthrough) can be configured next
+- Stories 12-14 require TFE to be running on amd64 cluster
+

@@ -173,6 +173,14 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 - When testing from within cluster, include `Host:` header to match ingress rules
 - nginx returns 404 when no ingress resources match the request (expected behavior)
 - The default backend is disabled in our configuration (we use TFE as backend)
+- **Vault PKI intermediate CA needs a default issuer set** after importing signed certificate
+  - Use `vault write pki_int/config/issuers` to set default issuer
+  - The default issuer should be set before trying to issue certificates
+  - Use `vault list pki_int/issuers` to see available issuers
+- **Vault PKI certificate issuance returns ca_chain array**:
+  - Index 0: Intermediate CA certificate
+  - Index 1: Root CA certificate (when using intermediate CA)
+  - Use `jq -r ".data.ca_chain[1]"` to extract root CA separately
 
 ### Terraform Enterprise
 - Helm chart: `hashicorp/terraform-enterprise`
@@ -444,6 +452,7 @@ story-9 (nginx NLB)
 story-10 (TLS Option 1 - NLB Terminates)
     └── Depends on: story-6, story-9
     └── Tests: HTTPS with nginx TLS termination
+    └── Note: Can be configured without TFE running, but requires TFE for end-to-end verification
 
 story-11 (TLS Option 2 - Passthrough)
     └── Depends on: story-6, story-9

@@ -1,0 +1,57 @@
+# Ingress Resource for TFE - TLS Termination at nginx
+# In this mode, nginx terminates TLS and forwards HTTP traffic to TFE pods
+#
+# This configuration implements Story-10: Configure TLS Option 1 - NLB Terminates TLS
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tfe-ingress-termination
+  namespace: tfe
+  annotations:
+    # Configure nginx backend protocol (HTTP for TLS termination)
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+
+    # Configure proxy settings for TFE
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+
+    # Configure timeouts for long-running TFE operations (runs, applies, state uploads)
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+
+    # Configure upload size (TFE may need large uploads for state files, modules, etc.)
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+
+    # Enable WebSocket support for TFE real-time features (live logs, etc.)
+    nginx.ingress.kubernetes.io/websocket-services: "terraform-enterprise"
+
+    # Pass the original host header to TFE
+    nginx.ingress.kubernetes.io/upstream-vhost: "tfe.tfe.local"
+
+    # Force SSL redirect (HTTP -> HTTPS)
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+spec:
+  # Use the nginx ingress class
+  ingressClassName: nginx
+
+  # TLS configuration with certificate from Vault
+  tls:
+    - hosts:
+        - tfe.tfe.local
+      secretName: tfe-tls-cert  # Created by setup-tls-cert.sh script
+
+  rules:
+    - host: tfe.tfe.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: terraform-enterprise
+                port:
+                  number: 80  # TFE HTTP port (nginx terminates TLS)
