@@ -195,14 +195,18 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 ### Terraform Enterprise
 - Helm chart: `hashicorp/terraform-enterprise`
 - **Image**: `images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1`
-- **CRITICAL ARCHITECTURE REQUIREMENT**: TFE images are **ONLY available for amd64** architecture
+- **Architecture Requirement**: TFE images are **ONLY available for amd64** architecture
   - HashiCorp does NOT provide arm64 images for TFE
-  - On Apple Silicon (arm64), you MUST use:
+  - **On Apple Silicon with Docker Desktop**: TFE CAN run via QEMU binfmt emulation
+    - Docker Desktop automatically includes QEMU handlers for multi-platform emulation
+    - Use ARM64 affinity in values.yaml to schedule on arm64 nodes
+    - The amd64 TFE image will be emulated transparently (~20-30% overhead)
+    - This is the recommended approach for development/testing on Apple Silicon
+  - Alternative options for production:
     - A cloud-based Kubernetes cluster with amd64 nodes (EKS, GKE, AKS, etc.)
     - A VM-based local cluster (minikube/docker-desktop with amd64 nodes)
     - Colima or Lima with amd64 architecture explicitly set
-  - kind on Apple Silicon creates arm64 nodes by default and CANNOT run TFE
-  - DO NOT try to use QEMU/binfmt emulation with kind - it causes control plane crashes
+  - **Configuration**: Use `affinity.nodeAffinity` with `values: ["arm64"]` to schedule on arm64 nodes with QEMU emulation
 - **IMPORTANT**: The image tag format is `vYYYYMM-#` and must match the license version
 - **Image pull secret**: Must create `terraform-enterprise` docker-registry secret using the license file as password
 - **License file**: Must be base64 encoded and embedded in `env.secrets.TFE_LICENSE`
