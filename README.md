@@ -62,13 +62,30 @@ TFE Pod (port 8443)
 
 ## Quick Start
 
-### 1. Create Kind Cluster
+### Option A: One-Click Deploy (Experimental)
+
+> **Warning**: The `deploy.sh` script was created as an afterthought and has never been fully tested. It may not work correctly. Use the manual deployment steps below for a reliable setup.
+
+```bash
+# Place your TFE license file in the repo root
+cp /path/to/your/license tfe.license
+
+# Run the deployment script
+./deploy.sh
+
+# Cleanup when done
+./destroy.sh
+```
+
+### Option B: Manual Deployment (Recommended)
+
+#### 1. Create Kind Cluster
 
 ```bash
 kind create cluster --config manifests/kind/cluster-config.yaml
 ```
 
-### 2. Deploy Components
+#### 2. Deploy Components
 
 Deploy in this order (each component has its own manifests directory):
 
@@ -96,16 +113,28 @@ helm install vault hashicorp/vault -n vault --create-namespace -f manifests/vaul
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   -n ingress-nginx --create-namespace \
-  -f manifests/nginx/values.yaml
+  -f manifests/nginx/values.yaml \
+  --set controller.extraArgs.enable-ssl-passthrough=true
+
+# Setup TLS certificates
+./manifests/nginx/setup-tls-cert.sh
+./manifests/tfe/setup-tls-from-vault.sh
 
 # TFE
-kubectl create secret generic tfe-license -n tfe --from-file=license=tfe.license
+kubectl create namespace tfe
+kubectl create secret generic terraform-enterprise-license -n tfe --from-file=license=tfe.license
 helm install terraform-enterprise hashicorp/terraform-enterprise \
-  -n tfe --create-namespace \
+  -n tfe \
   -f manifests/tfe/values.yaml
+
+# Apply ingress
+kubectl apply -f manifests/nginx/tls-passthrough-ingress.yaml
+
+# Configure Vault JWT auth for Workload Identity
+./manifests/vault/oidc/configure-vault-jwt.sh
 ```
 
-### 3. Configure Host Access
+#### 3. Configure Host Access
 
 Add to `/etc/hosts` on your Mac:
 
@@ -233,6 +262,8 @@ Key settings in `manifests/nginx/values.yaml`:
 ```
 tfe-setup/
 ├── README.md                 # This file
+├── deploy.sh                 # One-click deploy (experimental, untested)
+├── destroy.sh                # Cleanup script
 ├── prd.json                  # Story tracking (14 stories)
 ├── prompt.md                 # Project requirements
 ├── progress.txt              # Iteration log
@@ -279,6 +310,7 @@ All 14 stories have been completed and verified.
 
 ## Notes
 
-- TFE images are amd64-only; on Apple Silicon they run via QEMU emulation
+- This project was built and tested on a **MacBook Pro M4 (Apple Silicon)**
+- TFE images are amd64-only; on Apple Silicon they run via QEMU emulation (slower performance)
 - This is a lab environment - credentials are not production-ready
 - The Kind cluster maps ports 80, 443, and 30443 to the host
