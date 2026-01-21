@@ -1,6 +1,8 @@
-# TFE on Kubernetes Setup
+# TFE Setup for macOS (tfe-setup-macos)
 
 A complete Terraform Enterprise deployment on Kubernetes using Kind (Kubernetes IN Docker), with all necessary dependencies including S3 storage, Redis, PostgreSQL, Vault for TLS/PKI, nginx as Network Load Balancer, and dnsmasq for DNS.
+
+> **Repository**: [tfe-setup-macos](https://github.com/songlining/tfe-setup-macos)
 
 ## Overview
 
