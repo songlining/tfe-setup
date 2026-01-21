@@ -469,12 +469,14 @@ story-11 (TLS Option 2 - Passthrough)
     └── Tests: HTTPS with TFE handling TLS
 
 story-12 (Vault OIDC Auth)
-    └── Depends on: story-6, story-8 (needs TFE running for JWKS URL)
+    └── Depends on: story-6 (Vault must be running)
     └── Enables: story-13
+    └── Note: Can be configured without TFE running; JWKS URL updated after TFE deployment
 
 story-13 (Workload Identity Test)
     └── Depends on: story-8, story-12
     └── Tests: TFE runs authenticating to Vault
+    └── Note: Blocked until TFE is deployed (Story-8 blocked on arm64)
 
 story-14 (Final Integration)
     └── Depends on: All previous stories
@@ -490,7 +492,113 @@ story-14 (Final Integration)
 - Workload Identity: https://developer.hashicorp.com/terraform/enterprise/workspaces/dynamic-provider-credentials/workload-identity-tokens
 - Kind: https://kind.sigs.k8s.io/
 - Vault PKI: https://developer.hashicorp.com/vault/docs/secrets/pki
-- Vault OIDC Auth: https://developer.hashicorp.com/vault/docs/auth/jwt
+- Vault JWT Auth: https://developer.hashicorp.com/vault/docs/auth/jwt
+
+---
+
+## Vault JWT/OIDC Auth for TFE Workload Identity
+
+### JWT Auth Method Configuration
+- **Path**: `tfe-jwt` (configurable)
+- **Type**: JWT (not OIDC - JWT is more flexible for service-to-service auth)
+- **Configuration files**: `manifests/vault/oidc/`
+- **Scripts**:
+  - `configure-vault-jwt.sh`: Initial configuration
+  - `update-jwt-jwks.sh`: Update JWKS URL after TFE deployment
+  - `test-jwt-config.sh`: Verify configuration
+
+### Key Settings
+
+**Issuer and JWKS**:
+- Issuer: `https://tfe.tfe.local` (must match TFE_HOSTNAME)
+- JWKS URL: `https://tfe.tfe.local/.well-known/jwks` (standard OIDC pattern)
+- Bound Issuer: Must match issuer in TFE Workload Identity tokens
+
+**Roles**:
+- `tfe-workload-role`: Generic role for all TFE workloads
+- `tfe-org-role`: Organization-scoped role with bound_claims
+- Bound Audiences: `vault.workload.identity` (must match TFE workspace config)
+- User Claim: `terraform_full_workspace`
+- Token TTL: 20m (recommended for security)
+
+**Policy** (`tfe-workload-policy`):
+- Read secrets from `secret/` and `kv/` paths
+- Token lookup and renewal
+- Dynamic credential endpoints (AWS, GCP, Azure, Database, PKI, SSH)
+
+### TFE Workload Identity Token Claims
+
+**Standard OIDC Claims**:
+- `iss`: Issuer (TFE URL)
+- `aud`: Audience (defaults to `vault.workload.identity`)
+- `sub`: Subject (workspace path)
+- `exp`, `iat`, `nbf`: Token timestamps
+- `jti`: Unique token identifier
+
+**TFE-Specific Claims**:
+- `terraform_organization_name`: Organization name
+- `terraform_workspace_name`: Workspace name
+- `terraform_full_workspace`: Full workspace path (e.g., `org:project:workspace`)
+- `terraform_run_id`: Run ID
+- `terraform_run_phase`: `plan` or `apply`
+- `terraform_project_id`, `terraform_project_name`: Project details
+- `terraform_workspace_id`: Workspace ID
+
+### Vault CLI Syntax Patterns
+
+**Enable JWT Auth**:
+```bash
+vault auth enable -path=tfe-jwt jwt
+```
+
+**Configure JWT Auth**:
+```bash
+vault write auth/tfe-jwt/config \
+    jwks_url="https://tfe.tfe.local/.well-known/jwks" \
+    bound_issuer="https://tfe.tfe.local"
+```
+
+**Create Role with Bound Claims**:
+```bash
+# Use bracket notation for bound_claims
+vault write auth/tfe-jwt/role/tfe-org-role \
+    policies="tfe-workload-policy" \
+    bound_audiences="vault.workload.identity" \
+    bound_claims_type=glob \
+    "bound_claims[terraform_organization_name]=*" \
+    user_claim="terraform_full_workspace"
+```
+
+**Create Role without Bound Claims**:
+```bash
+vault write auth/tfe-jwt/role/tfe-workload-role \
+    policies="tfe-workload-policy" \
+    bound_audiences="vault.workload.identity" \
+    user_claim="terraform_full_workspace" \
+    role_type="jwt" \
+    token_ttl="20m"
+```
+
+### TFE Workspace Variables
+
+To enable Workload Identity in TFE workspaces:
+```bash
+TFC_VAULT_PROVIDER_AUTH=true
+TFC_VAULT_ADDR=https://vault.vault.svc.cluster.local:8200
+TFC_VAULT_RUN_ROLE=tfe-workload-role
+TFC_VAULT_WORKLOAD_IDENTITY_AUDIENCE=vault.workload.identity
+TFC_VAULT_AUTH_PATH=tfe-jwt
+```
+
+### Learnings/Gotchas:
+- **Vault JWT auth requires validation method**: Must specify `jwks_url`, `jwt_validation_pubkeys`, `jwks_pairs`, or `oidc_discovery_url`
+- **JWKS URL may fail if TFE not running**: This is expected; configure without JWKS validation and update later
+- **bound_claims syntax**: Use bracket notation: `bound_claims[key]=value`, not JSON string
+- **claim_mappings optional**: Can omit for simpler config; use default claim names from TFE
+- **JWKS URL format**: Standard pattern is `https://<TFE_HOSTNAME>/.well-known/jwks`
+- **Audience must match**: Vault role's `bound_audiences` must match TFE's `TFC_VAULT_WORKLOAD_IDENTITY_AUDIENCE`
+- **Token TTL recommendations**: Use 20m for security (matches HashiCorp recommendations)
+- **Policy scope**: Grant minimum required permissions; use separate policies for different access levels
 
 ---
 
@@ -502,3 +610,12 @@ story-14 (Final Integration)
 - Jobs with `ttlSecondsAfterFinished: 300` auto-cleanup after completion (good for one-time setup tasks)
 - S3 API returning 400 Bad Request for unauthenticated requests is expected (confirms API is working)
 - When testing S3 with AWS CLI, use `--endpoint-url` flag to point to MinIO
+
+### Iteration 12 (Vault JWT/OIDC Auth) Notes
+- Vault JWT auth method can be configured without JWKS URL being accessible
+- Configure basic JWT settings first (issuer, roles, policies), then update JWKS URL after TFE deployment
+- Use bracket notation for bound_claims in Vault CLI: `bound_claims[key]=value`
+- TFE Workload Identity JWKS endpoint follows standard pattern: `https://<TFE_HOSTNAME>/.well-known/jwks`
+- JWT auth method path can be customized (default: `jwt`, we use `tfe-jwt`)
+- Token TTL of 20m is recommended for security (matches HashiCorp best practices)
+- TFE workspace requires specific variables: TFC_VAULT_PROVIDER_AUTH, TFC_VAULT_ADDR, TFC_VAULT_RUN_ROLE

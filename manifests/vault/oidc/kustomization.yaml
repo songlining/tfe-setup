@@ -1,0 +1,14 @@
+# Kustomization for Vault OIDC Configuration
+# This directory contains scripts for configuring Vault JWT/OIDC authentication
+# for TFE Workload Identity tokens.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# No Kubernetes resources to apply - this directory contains configuration scripts
+# Run ./configure-vault-jwt.sh to set up Vault JWT/OIDC authentication
+
+# Scripts:
+# - configure-vault-jwt.sh: Initial Vault JWT/OIDC configuration
+# - update-jwt-jwks.sh: Update JWT config with TFE JWKS endpoint (run after TFE deployment)
+# - test-jwt-config.sh: Verify JWT/OIDC configuration is working
