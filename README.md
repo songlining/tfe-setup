@@ -192,18 +192,43 @@ https://tfe.tfe.local/admin/account/new?token=<IACT_TOKEN>
 
 Two TLS modes are supported:
 
-### Option 1: TLS Termination at nginx
-nginx terminates TLS and forwards HTTP to TFE.
+### Option 1: TLS Passthrough (Default)
+nginx passes encrypted traffic directly to TFE without terminating TLS. TFE's certificate is served to clients.
+
+```bash
+kubectl apply -f manifests/nginx/tls-passthrough-ingress.yaml
+```
+
+### Option 2: TLS Re-encryption
+nginx terminates client-facing TLS and re-encrypts traffic to TFE's HTTPS backend. This allows nginx to:
+- Serve a different certificate to clients (e.g., from a different CA)
+- Apply WAF rules, rate limiting, and other L7 features
+- Log and inspect HTTP headers
 
 ```bash
 kubectl apply -f manifests/nginx/tls-termination-ingress.yaml
 ```
 
-### Option 2: TLS Passthrough
-nginx passes encrypted traffic directly to TFE (end-to-end encryption).
+### Key Finding
+
+TFE's internal nginx **always redirects HTTP to HTTPS** when the `Host` header matches `TFE_HOSTNAME`. This means true "TLS termination to HTTP" is not possible. Instead, we use **TLS re-encryption**:
+
+1. nginx terminates client-facing TLS
+2. nginx connects to TFE over HTTPS (port 443 → 8443)
+3. Traffic remains encrypted end-to-end
+
+### Switching Between Modes
+
+Only one ingress can be active at a time:
 
 ```bash
-kubectl apply -f manifests/nginx/tls-passthrough-ingress.yaml
+# Switch to TLS re-encryption
+kubectl delete ingress tfe-ingress-passthrough -n tfe --context kind-tfe
+kubectl apply -f manifests/nginx/tls-termination-ingress.yaml --context kind-tfe
+
+# Switch back to TLS passthrough
+kubectl delete ingress tfe-ingress-termination -n tfe --context kind-tfe
+kubectl apply -f manifests/nginx/tls-passthrough-ingress.yaml --context kind-tfe
 ```
 
 ## Workload Identity
