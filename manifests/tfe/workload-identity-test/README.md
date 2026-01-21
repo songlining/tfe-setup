@@ -8,6 +8,61 @@ Workload Identity allows Terraform runs in TFE to authenticate to Vault using a 
 
 **IMPORTANT**: This test configuration requires TFE to be deployed on an **amd64** Kubernetes cluster. See the main project README for alternatives if running on Apple Silicon.
 
+## OIDC Discovery Endpoints - Verified Working
+
+The TFE OIDC discovery endpoints have been tested and are working correctly:
+
+### OIDC Configuration (`/.well-known/openid-configuration`)
+
+```bash
+curl -k -s https://tfe.tfe.local/.well-known/openid-configuration
+```
+
+**Response:**
+```json
+{
+  "issuer": "https://tfe.tfe.local",
+  "jwks_uri": "https://tfe.tfe.local/.well-known/jwks",
+  "response_types_supported": ["id_token"],
+  "claims_supported": [
+    "sub", "aud", "exp", "iat", "iss", "jti", "nbf", "ref",
+    "terraform_run_phase",
+    "terraform_workspace_id", "terraform_workspace_name",
+    "terraform_organization_id", "terraform_organization_name",
+    "terraform_project_id", "terraform_project_name",
+    "terraform_run_id", "terraform_full_workspace"
+  ],
+  "id_token_signing_alg_values_supported": ["RS256"],
+  "scopes_supported": ["openid"],
+  "subject_types_supported": ["public"]
+}
+```
+
+### JWKS Endpoint (`/.well-known/jwks`)
+
+```bash
+curl -k -s https://tfe.tfe.local/.well-known/jwks
+```
+
+**Response:**
+```json
+{
+  "keys": [{
+    "kty": "RSA",
+    "n": "0RO2fUZaqXp-0uuDyJaq5z-WSe-sMR6-TomGztoqNyXlgbwnFNbF2RqcgPKLNxwf...",
+    "e": "AQAB",
+    "kid": "9ceb88ded285db166fb5cea244f92332286b19fe40af2bc8e80586d9747e09ba",
+    "use": "sig",
+    "alg": "RS256"
+  }]
+}
+```
+
+This confirms:
+- TFE is issuing JWTs signed with RS256
+- The JWKS endpoint provides the public key for Vault to verify JWT signatures
+- All required claims for Workload Identity are supported
+
 ## Prerequisites
 
 1. **TFE Deployed**: TFE must be running and accessible (story-8)
