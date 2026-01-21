@@ -377,3 +377,62 @@ Next Steps (Story-8):
 4. Update values.yaml with certificate data (or use secret)
 5. Add HashiCorp Helm repo: helm repo add hashicorp https://helm.releases.hashicorp.com
 6. Install TFE: helm install terraform-enterprise hashicorp/terraform-enterprise -n tfe -f values.yaml
+
+[ITERATION 8] Story-8: Deploy Terraform Enterprise - BLOCKED
+-------------------------------------------
+What was attempted:
+- Created 'tfe' namespace
+- Created 'terraform-enterprise' docker-registry secret using license file as password
+- Ran setup-tls-from-vault.sh to fetch TLS certificates from Vault
+- Created 'terraform-enterprise-certificates' secret with cert.pem, key.pem, ca.pem
+- Added HashiCorp Helm repository (hashicorp https://helm.releases.hashicorp.com)
+- Attempted to install TFE Helm chart with values.yaml
+
+BLOCKING ISSUE - Architecture Mismatch:
+- TFE images are ONLY available for amd64 architecture
+- HashiCorp does NOT provide arm64 images for Terraform Enterprise
+- The kind cluster on Apple Silicon (M1/M2/M3) creates arm64 nodes by default
+- Attempted solutions:
+  1. Pulling amd64 kind node image - Still runs as arm64 on Apple Silicon
+  2. Installing binfmt emulation - Causes control plane crashes, not viable
+- Image pull error: "no match for platform in manifest: not found"
+
+Verified Image Registry Data:
+- Checked HashiCorp image registry for available tags
+- TFE v202507-1 exists but ONLY supports linux/amd64 platform
+- Manifest shows: {"architecture":"amd64","os":"linux"}
+- No arm64 images available in any TFE version (including beta tags)
+
+REQUIRED RESOLUTION:
+To deploy TFE on Apple Silicon, you MUST use one of these alternatives:
+1. Cloud-based Kubernetes cluster (EKS, GKE, AKS, etc.) with amd64 nodes
+2. VM-based local cluster (minikube with --driver=vmware or --driver=virtualbox)
+3. Colima with explicit amd64 architecture: colima start --arch x86_64 --kubernetes
+4. Lima with amd64 configuration
+
+Files created/modified:
+- manifests/tfe/values.yaml - Complete Helm values configuration (ready for use on amd64 cluster)
+- manifests/tfe/setup-tls-from-vault.sh - Fixed vault-keys secret key reference (root_token vs vault-root-token)
+- manifests/kind/cluster-config.yaml - No changes needed (but kind won't work for TFE on Apple Silicon)
+- AGENTS.md - Updated with critical architecture requirement documentation
+
+Learnings/Gotchas:
+- **CRITICAL**: TFE requires amd64 nodes - this is a hard requirement from HashiCorp
+- The vault-keys secret uses 'root_token' key, not 'vault-root-token' (fixed in setup-tls-from-vault.sh)
+- Docker-registry secret password must be the RAW license file content, not base64 encoded
+- kind on Apple Silicon cannot run amd64 workloads reliably through emulation
+- DO NOT try binfmt/qemu emulation with kind - causes control plane instability
+- For home lab on Apple Silicon: Use Colima or Lima with amd64, or a cloud-based cluster
+
+Acceptance Criteria Status:
+- TFE namespace is created: PASS (namespace 'tfe' exists)
+- TFE Helm chart is deployed successfully: BLOCKED (architecture mismatch)
+- TFE pods are running and healthy: BLOCKED (cannot pull image on arm64)
+- TFE application logs show successful startup: NOT APPLICABLE
+- TFE is listening on configured ports: NOT APPLICABLE
+
+Commands used for verification:
+- curl -s -u terraform:$(cat tfe.license) https://images.releases.hashicorp.com/v2/hashicorp/terraform-enterprise/tags/list
+- curl -s -u terraform:$(cat tfe.license) https://images.releases.hashicorp.com/v2/hashicorp/terraform-enterprise/manifests/v202507-1
+- kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}'
+- helm install terraform-enterprise hashicorp/terraform-enterprise -n tfe -f values.yaml

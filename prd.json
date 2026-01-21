@@ -95,7 +95,7 @@
     {
       "id": "story-8",
       "title": "Deploy Terraform Enterprise",
-      "description": "Deploy TFE using the official Helm chart with the prepared values.yaml. Verify TFE pods are running and the application starts successfully.",
+      "description": "Deploy TFE using the official Helm chart with the prepared values.yaml. Verify TFE pods are running and the application starts successfully. NOTE: BLOCKED on Apple Silicon due to architecture mismatch - TFE images are amd64-only. Configuration is complete and ready for deployment on amd64 cluster.",
       "acceptanceCriteria": [
         "TFE namespace is created",
         "TFE Helm chart is deployed successfully",
@@ -103,7 +103,8 @@
         "TFE application logs show successful startup",
         "TFE is listening on configured ports"
       ],
-      "passes": false
+      "passes": false,
+      "blockedReason": "TFE images are amd64-only. kind on Apple Silicon creates arm64 nodes. Configuration is complete and ready for deployment on amd64 cluster (EKS, GKE, AKS, Colima with --arch x86_64, or Lima with amd64)."
     },
     {
       "id": "story-9",

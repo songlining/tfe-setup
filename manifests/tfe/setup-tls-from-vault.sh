@@ -46,17 +46,18 @@ fi
 
 # Get Vault root token from secret
 echo "Fetching Vault credentials..."
-VAULT_TOKEN=$(kubectl get secret vault-keys -n "$VAULT_NAMESPACE" --context kind-tfe -o jsonpath='{.data.vault-root-token}' | base64 -d)
+VAULT_TOKEN=$(kubectl get secret vault-keys -n "$VAULT_NAMESPACE" --context kind-tfe -o jsonpath='{.data.root_token}' | base64 -d)
 
 if [ -z "$VAULT_TOKEN" ]; then
     echo "Error: Could not retrieve Vault root token from vault-keys secret"
     exit 1
 fi
 
-# Issue certificate from Vault
-echo "Issuing certificate from Vault PKI..."
+# Issue certificate from Vault Root CA (fallback)
+# Note: For production, use intermediate CA. This uses root CA for simplicity.
+echo "Issuing certificate from Vault PKI Root CA..."
 CERT_RESPONSE=$(kubectl exec -n "$VAULT_NAMESPACE" "$VAULT_POD" --context kind-tfe -- \
-    sh -c "VAULT_TOKEN='$VAULT_TOKEN' vault write pki_int/issue/tfe-cert \
+    sh -c "VAULT_TOKEN='$VAULT_TOKEN' vault write pki/issue/tfe-cert \
         common_name='$COMMON_NAME' \
         ttl='$TLS_TTL' \
         format=pem_bundle" 2>&1)

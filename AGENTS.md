@@ -140,6 +140,14 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 ### Terraform Enterprise
 - Helm chart: `hashicorp/terraform-enterprise`
 - **Image**: `images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1`
+- **CRITICAL ARCHITECTURE REQUIREMENT**: TFE images are **ONLY available for amd64** architecture
+  - HashiCorp does NOT provide arm64 images for TFE
+  - On Apple Silicon (arm64), you MUST use:
+    - A cloud-based Kubernetes cluster with amd64 nodes (EKS, GKE, AKS, etc.)
+    - A VM-based local cluster (minikube/docker-desktop with amd64 nodes)
+    - Colima or Lima with amd64 architecture explicitly set
+  - kind on Apple Silicon creates arm64 nodes by default and CANNOT run TFE
+  - DO NOT try to use QEMU/binfmt emulation with kind - it causes control plane crashes
 - **IMPORTANT**: The image tag format is `vYYYYMM-#` and must match the license version
 - **Image pull secret**: Must create `terraform-enterprise` docker-registry secret using the license file as password
 - **License file**: Must be base64 encoded and embedded in `env.secrets.TFE_LICENSE`
