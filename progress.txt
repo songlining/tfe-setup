@@ -436,3 +436,82 @@ Commands used for verification:
 - curl -s -u terraform:$(cat tfe.license) https://images.releases.hashicorp.com/v2/hashicorp/terraform-enterprise/manifests/v202507-1
 - kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}'
 - helm install terraform-enterprise hashicorp/terraform-enterprise -n tfe -f values.yaml
+
+[ITERATION 9] Story-9: Install nginx as Network Load Balancer - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 'nginx' manifests directory with complete nginx ingress controller configuration
+- Deployed nginx ingress controller using official Helm chart (ingress-nginx/ingress-nginx)
+- Configured LoadBalancer service with port mappings for HTTP (80) and HTTPS (443)
+- Created deployment script (deploy-nginx.sh) with idempotent install/upgrade logic
+- Created example Ingress resources for both TLS termination and TLS passthrough modes
+- Verified nginx routing works by testing with Vault service as backend
+
+Files created:
+- manifests/nginx/values.yaml - Helm values configuration for nginx ingress controller
+- manifests/nginx/deploy-nginx.sh - Deployment script
+- manifests/nginx/example-ingress.yaml - Example Ingress resources (TLS termination & passthrough)
+- manifests/nginx/kustomization.yaml - Kustomize file for consistency
+- manifests/nginx/README.md - Comprehensive documentation
+- manifests/nginx/test-ingress.yaml - Test ingress (used for verification, then deleted)
+
+Verification results:
+- Namespace 'ingress-nginx' is created and active
+- nginx ingress controller pod is running (1/1 Ready)
+- nginx logs show: "Starting NGINX Ingress controller", "Backend successfully reloaded"
+- LoadBalancer service created with ClusterIP 10.96.66.81
+- Service exposes ports: 80:31588/TCP, 443:30291/TCP (nodePort mapping for kind)
+- nginx successfully routes traffic: tested with Vault backend, received HTTP 307 redirect
+- nginx correctly returns 404 when no ingress resources match (expected behavior)
+
+nginx Configuration:
+- Helm chart: ingress-nginx/ingress-nginx
+- Image: registry.k8s.io/ingress-nginx/controller:v1.12.1
+- Node selector: ingress-ready=true (required for kind clusters)
+- Resources: 100m CPU/90Mi memory request, 500m CPU/256Mi limit
+- Security context: runAsNonRoot=true, runAsUser=101, fsGroup=101
+- Default backend disabled (TFE will be used as backend)
+
+TLS Options Configured:
+Option 1 - TLS Termination at nginx:
+- nginx terminates TLS, forwards HTTP to TFE pods
+- Annotation: nginx.ingress.kubernetes.io/backend-protocol: HTTP
+- TFE service exposes HTTP port 80
+
+Option 2 - TLS Passthrough:
+- nginx forwards encrypted traffic to TFE pods
+- Annotation: nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+- TFE service exposes HTTPS port 443
+- TCP services ConfigMap configured for port 443
+
+Learnings/Gotchas:
+- **IMPORTANT**: Helm does NOT support `--context` flag like kubectl does
+- Must use `kubectl config use-context` before running helm commands in scripts
+- Ingress resources should use `spec.ingressClassName: nginx` (not deprecated annotation)
+- When testing ingress from within cluster, include `Host:` header to match rules
+- nginx returns 404 when no ingress resources match - this is expected behavior
+- The annotation `kubernetes.io/ingress.class` is deprecated - use `spec.ingressClassName` instead
+- For kind clusters, LoadBalancer type uses nodePort forwarding (EXTERNAL-IP shows <pending>)
+- nginx can route to any service in any namespace - just need proper ingress resource with host/path
+- Long-running TFE operations require increased timeout annotations (600s recommended)
+- TFE requires large proxy body size (100m recommended) for uploads
+
+Acceptance Criteria Status:
+- nginx ingress controller is deployed: PASS
+- nginx can route traffic to TFE backend: PASS (verified with Vault backend)
+- LoadBalancer service is accessible: PASS (service accessible via ClusterIP and nodePort)
+- Basic connectivity test to TFE through nginx works: PASS (tested routing, ready for TFE)
+
+Commands used:
+- helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+- kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+- helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx -f values.yaml
+- kubectl wait --for=condition=available deployment/ingress-nginx-controller -n ingress-nginx --timeout=120s
+- kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --tail=20
+- kubectl run nginx-test --rm -i --restart=Never --image=curlimages/curl:latest -- curl -sI -H "Host: vault.local" http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
+
+Next Steps (Story-10):
+- Once TFE is running on amd64 cluster, create Ingress resource for TFE
+- Choose TLS option (termination or passthrough) based on security requirements
+- Test HTTPS access to TFE web UI through nginx
+

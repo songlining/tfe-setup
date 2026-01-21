@@ -133,9 +133,46 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 
 ### nginx Ingress Controller
 - Helm chart: `ingress-nginx/ingress-nginx`
-- Supports both TLS termination and TLS passthrough
-- Use annotations to control behavior
-- LoadBalancer service type for external access
+- **Image**: `registry.k8s.io/ingress-nginx/controller:v1.12.1`
+- **Namespace**: `ingress-nginx`
+- **Service type**: LoadBalancer (for kind, uses nodePort forwarding)
+- **Port mappings** (configured in kind cluster-config.yaml):
+  - Host port 80 → Container port 80 (HTTP)
+  - Host port 443 → Container port 443 (HTTPS)
+- **Resources**: 100m CPU request, 500m CPU limit; 90Mi memory request, 256Mi limit
+- **Node selector**: `ingress-ready: "true"` (required for kind clusters)
+- Supports both TLS termination and TLS passthrough modes
+- **Configuration files**:
+  - `manifests/nginx/values.yaml` - Helm values configuration
+  - `manifests/nginx/deploy-nginx.sh` - Deployment script
+  - `manifests/nginx/example-ingress.yaml` - Example Ingress resources for TFE
+
+**TLS Option 1: TLS Termination at nginx**
+- nginx terminates TLS and forwards HTTP to TFE pods
+- Use `nginx.ingress.kubernetes.io/backend-protocol: HTTP` annotation
+- TFE service should expose HTTP port (80)
+- Simpler certificate management
+
+**TLS Option 2: TLS Passthrough**
+- nginx forwards encrypted traffic to TFE pods
+- Use `nginx.ingress.kubernetes.io/ssl-passthrough: "true"` annotation
+- TFE service should expose HTTPS port (443)
+- End-to-end encryption, TFE manages certificates
+
+**Important nginx Annotations for TFE**:
+- `nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"` - Long-running TFE operations
+- `nginx.ingress.kubernetes.io/proxy-send-timeout: "600"`
+- `nginx.ingress.kubernetes.io/proxy-read-timeout: "600"`
+- `nginx.ingress.kubernetes.io/proxy-body-size: "100m"` - Large uploads
+- `nginx.ingress.kubernetes.io/websocket-services: "terraform-enterprise"` - Real-time features
+
+**Learnings/Gotchas**:
+- Helm does NOT support `--context` flag like kubectl does
+- Must use `kubectl config use-context` before running helm commands
+- Ingress resources must use `spec.ingressClassName: nginx` (not annotation `kubernetes.io/ingress.class`)
+- When testing from within cluster, include `Host:` header to match ingress rules
+- nginx returns 404 when no ingress resources match the request (expected behavior)
+- The default backend is disabled in our configuration (we use TFE as backend)
 
 ### Terraform Enterprise
 - Helm chart: `hashicorp/terraform-enterprise`

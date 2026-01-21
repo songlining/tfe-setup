@@ -1,0 +1,123 @@
+# nginx Ingress Controller Values for TFE on Kubernetes
+# This configures nginx as a Network Load Balancer for TFE traffic routing
+
+# Enable nginx ingress controller
+controller:
+  # Enable the controller
+  enabled: true
+
+  # Image configuration
+  image:
+    repository: registry.k8s.io/ingress-nginx/controller
+    tag: "v1.12.1"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  # Use host network for kind clusters (needed for port mappings)
+  hostNetwork: false
+
+  # Configure the service as LoadBalancer
+  # For kind clusters, this will use port-forwarding
+  service:
+    type: LoadBalancer
+    # External traffic policy
+    externalTrafficPolicy: Local
+
+    # Annotations for the service
+    annotations: {}
+
+    # HTTP port
+    httpPort:
+      enabled: true
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+
+    # HTTPS port
+    httpsPort:
+      enabled: true
+      port: 443
+      targetPort: 443
+      nodePort: 30443
+
+  # Configure admission webhooks
+  admissionWebhooks:
+    enabled: true
+    # For kind clusters, we need to handle the webhook properly
+    patch:
+      enabled: true
+
+  # Node selector for placement on nodes with ingress-ready=true label
+  nodeSelector:
+    ingress-ready: "true"
+
+  # Tolerations
+  tolerations: []
+
+  # Resources for nginx controller
+  resources:
+    requests:
+      cpu: 100m
+      memory: 90Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Configure nginx logging
+  # Options: debug, info, notice, warn, error, crit, alert, emerg
+  logLevel: info
+
+  # Configure nginx arguments
+  args:
+    - /nginx-ingress-controller
+    - --election-id=ingress-controller-leader
+    - --controller-class=k8s.io/ingress-nginx
+    - --ingress-class=nginx
+    - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+    - --tcp-services-configmap=$(POD_NAMESPACE)/tcp-services
+    - --udp-services-configmap=$(POD_NAMESPACE)/udp-services
+    - --validating-webhook=:8443
+    - --validating-webhook-certificate=/usr/local/certificates/cert
+    - --validating-webhook-key=/usr/local/certificates/key
+    - --publish-status-address=localhost
+
+# Disable the default backend (we'll use TFE as the backend)
+defaultBackend:
+  enabled: false
+
+# RBAC settings
+rbac:
+  create: true
+  scope: false
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Security context for pod
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+# Security context for container
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - NET_BIND_SERVICE
+  runAsUser: 101
+  readOnlyRootFilesystem: false
+
+# Metrics service
+metrics:
+  enabled: false
+
+# Provider specific settings
+# For kind clusters, we need special handling
+provider: ""

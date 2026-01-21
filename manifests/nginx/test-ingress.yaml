@@ -1,0 +1,24 @@
+# Test Ingress to verify nginx routing works
+# This creates a simple route to Vault UI for testing purposes
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: test-vault-ingress
+  namespace: vault
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+    - host: vault.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vault
+                port:
+                  number: 8200

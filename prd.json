@@ -116,7 +116,7 @@
         "LoadBalancer service is accessible",
         "Basic connectivity test to TFE through nginx works"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "story-10",

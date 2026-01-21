@@ -1,0 +1,17 @@
+# Kustomization for nginx Ingress Controller
+# This is a placeholder - nginx is deployed via Helm
+# This file is here for consistency with other manifests
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ingress-nginx
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/name: ingress-nginx
+  app.kubernetes.io/instance: ingress-nginx
+  app.kubernetes.io/component: controller
+
+# Resources are managed by Helm, not kubectl apply
+# Use deploy-nginx.sh script to install/upgrade
