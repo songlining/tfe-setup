@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# This directory contains test configurations for TFE Workload Identity integration
+# Note: These are NOT Kubernetes manifests - they are Terraform configurations and scripts
+
+# Files in this directory:
+# - terraform-vault-test.tf: Terraform configuration for testing Vault provider
+# - variables.tf: Terraform variables
+# - outputs.tf: Terraform outputs
+# - setup-vault-test-data.sh: Script to create test secrets in Vault
+# - verify-workload-identity.sh: Script to verify Workload Identity configuration
+# - README.md: Documentation
+
+# To use these configurations:
+# 1. Ensure TFE is deployed and running
+# 2. Run: ./setup-vault-test-data.sh (creates test secrets in Vault)
+# 3. Run: ./verify-workload-identity.sh (verifies configuration)
+# 4. Upload .tf files to a TFE workspace
+# 5. Configure TFE workspace variables (see README.md)
+# 6. Run Terraform plan/apply in TFE

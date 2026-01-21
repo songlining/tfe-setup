@@ -619,3 +619,22 @@ TFC_VAULT_AUTH_PATH=tfe-jwt
 - JWT auth method path can be customized (default: `jwt`, we use `tfe-jwt`)
 - Token TTL of 20m is recommended for security (matches HashiCorp best practices)
 - TFE workspace requires specific variables: TFC_VAULT_PROVIDER_AUTH, TFC_VAULT_ADDR, TFC_VAULT_RUN_ROLE
+
+### Iteration 13 (Workload Identity Test) Notes
+- Workload Identity test configurations can be prepared independently of TFE deployment
+- Test directory: `manifests/tfe/workload-identity-test/`
+- **TFE Workspace Variables Required** for Workload Identity:
+  - `TFC_VAULT_PROVIDER_AUTH=true` - Enables dynamic provider credentials
+  - `TFC_VAULT_ADDR=https://vault.vault.svc.cluster.local:8200` - Vault endpoint
+  - `TFC_VAULT_RUN_ROLE=tfe-workload-role` - Vault role to use
+  - `TFC_VAULT_WORKLOAD_IDENTITY_AUDIENCE=vault.workload.identity` - Must match Vault role's bound_audiences
+  - `TFC_VAULT_AUTH_PATH=tfe-jwt` - JWT auth method path in Vault
+- **Vault Provider Configuration**: No explicit token needed - TFE exchanges workload identity token for Vault token
+- **Test Data Setup**: `setup-vault-test-data.sh` creates test secrets in Vault KV v2
+- **Verification Script**: `verify-workload-identity.sh` checks TFE, Vault, JWT config, roles, policies
+- **Terraform Test Config**: `terraform-vault-test.tf` demonstrates KV reads, dynamic credentials, PKI certificates
+- **Troubleshooting Common Issues**:
+  - "Vault authentication failed": Check Vault accessibility, JWT auth config, JWKS URL
+  - "No Vault token found": Check TFE workspace variables, Vault role exists
+  - "Permission denied": Check Vault policy grants read access to secret paths
+- **End-to-end testing requires**: TFE running, Vault JWT auth configured, JWKS URL set, test secrets created
