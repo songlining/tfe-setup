@@ -1,0 +1,104 @@
+# TLS Option 2: TLS Passthrough Configuration for TFE
+# This configuration forwards encrypted traffic directly to TFE pods
+# TFE handles TLS termination using Vault-issued certificates
+#
+# IMPORTANT: This configuration conflicts with TLS Option 1 (termination)
+# - Only ONE option can be active at a time for the same host
+# - To use this option: kubectl delete -f tls-termination-ingress.yaml
+# - Then apply this option: kubectl apply -f tls-passthrough-ingress.yaml
+#
+# Architecture:
+# Client --[TLS]--> nginx (passthrough) --[TLS]--> TFE pods (terminates TLS)
+#
+# Benefits:
+# - End-to-end encryption
+# - TFE manages certificate lifecycle
+# - Client sees TFE-issued certificate
+#
+# Requirements:
+# - TFE must have TLS certificate from Vault PKI (in terraform-enterprise-certificates secret)
+# - TFE service must expose HTTPS port (443)
+# - tcp-services ConfigMap must be configured
+
+---
+# TCP Services Configuration for TLS Passthrough
+# This configures nginx to passthrough TCP traffic on port 443 to TFE
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+data:
+  # Format: <port>: "<namespace>/<service>:<port>"
+  # This configures nginx to passthrough TCP traffic on port 443 to TFE HTTPS port
+  "443": "tfe/terraform-enterprise:443"
+
+---
+# TLS Passthrough Ingress for TFE
+# This ingress uses nginx SSL passthrough to forward encrypted traffic to TFE
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tfe-ingress-passthrough
+  namespace: tfe
+  annotations:
+    # Enable TLS passthrough - nginx forwards encrypted traffic without decrypting
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+
+    # Backend protocol is HTTPS (TFE terminates TLS)
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+
+    # Configure timeouts for long-running TFE operations (applies to control channel)
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+
+    # Preserve the original host header
+    nginx.ingress.kubernetes.io/upstream-vhost: "tfe.tfe.local"
+
+    # Enable WebSocket support for TFE real-time features
+    nginx.ingress.kubernetes.io/websocket-services: "terraform-enterprise"
+
+spec:
+  ingressClassName: nginx
+  # NOTE: No TLS section here - TLS passthrough mode doesn't terminate at nginx
+  rules:
+    - host: tfe.tfe.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: terraform-enterprise
+                port:
+                  number: 443  # TFE HTTPS port
+
+---
+# Additional HTTP Ingress for redirect to HTTPS (optional)
+# This ensures all HTTP traffic is redirected to HTTPS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tfe-ingress-passthrough-redirect
+  namespace: tfe
+  annotations:
+    # Force redirect to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: tfe.tfe.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: terraform-enterprise
+                port:
+                  number: 443  # Redirect to HTTPS port

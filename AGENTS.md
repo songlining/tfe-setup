@@ -166,6 +166,16 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 - `nginx.ingress.kubernetes.io/proxy-body-size: "100m"` - Large uploads
 - `nginx.ingress.kubernetes.io/websocket-services: "terraform-enterprise"` - Real-time features
 
+**TLS Passthrough Configuration**:
+- Requires `tcp-services` ConfigMap in `ingress-nginx` namespace
+- ConfigMap format: `"<port>": "<namespace>/<service>:<port>"`
+- Example: `"443": "tfe/terraform-enterprise:443"`
+- Requires `nginx.ingress.kubernetes.io/ssl-passthrough: "true"` annotation
+- Requires `nginx.ingress.kubernetes.io/backend-protocol: HTTPS` annotation
+- TLS termination and TLS passthrough are **mutually exclusive** for the same host/path
+  - nginx ingress webhook rejects duplicate host/path configurations
+  - Must delete one ingress before applying the other
+
 **Learnings/Gotchas**:
 - Helm does NOT support `--context` flag like kubectl does
 - Must use `kubectl config use-context` before running helm commands

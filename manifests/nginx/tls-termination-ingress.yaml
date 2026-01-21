@@ -2,6 +2,11 @@
 # In this mode, nginx terminates TLS and forwards HTTP traffic to TFE pods
 #
 # This configuration implements Story-10: Configure TLS Option 1 - NLB Terminates TLS
+#
+# IMPORTANT: This configuration conflicts with TLS Option 2 (passthrough)
+# - Only ONE option can be active at a time for the same host
+# - To switch to passthrough: kubectl delete -f tls-termination-ingress.yaml
+# - Then: kubectl apply -f tls-passthrough-ingress.yaml
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress

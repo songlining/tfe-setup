@@ -32,6 +32,7 @@ External Traffic
 - `deploy-nginx.sh` - Deployment script
 - `setup-tls-cert.sh` - Script to fetch TLS certificate from Vault PKI
 - `tls-termination-ingress.yaml` - Ingress resource for TLS termination mode (Story-10)
+- `tls-passthrough-ingress.yaml` - Complete configuration for TLS passthrough mode (Story-11)
 - `example-ingress.yaml` - Example Ingress resources for TFE (both TLS options)
 - `README.md` - This file
 
@@ -179,18 +180,90 @@ curl -Iv https://tfe.tfe.local
 open https://tfe.tfe.local
 ```
 
-### Option 2: TLS Passthrough
+### Option 2: TLS Passthrough (Story-11 - IMPLEMENTED)
 
 In this mode:
 - nginx forwards encrypted traffic to TFE
-- TFE handles TLS termination
+- TFE handles TLS termination with Vault-issued certificate
 - End-to-end encryption
 - TFE manages its own certificates
+- Client sees TFE certificate directly
 
-Setup:
-1. Configure TCP services ConfigMap (included in example-ingress.yaml)
-2. Apply Ingress resource with ssl-passthrough annotation
-3. TFE service should expose HTTPS port (443)
+**Architecture:**
+```
+Client --[TLS]--> nginx (passthrough) --[TLS]--> TFE pods (terminates TLS)
+```
+
+**Files:**
+- `tls-passthrough-ingress.yaml` - Complete configuration for TLS passthrough mode
+- Includes TCP services ConfigMap and Ingress resources
+
+**Setup Steps:**
+
+1. **Remove TLS termination ingress (if active):**
+   ```bash
+   kubectl delete -f tls-termination-ingress.yaml --context kind-tfe
+   ```
+
+2. **Apply TLS passthrough configuration:**
+   ```bash
+   kubectl apply -f tls-passthrough-ingress.yaml --context kind-tfe
+   ```
+
+3. **Verify configuration:**
+   ```bash
+   # Check tcp-services ConfigMap
+   kubectl get configmap tcp-services -n ingress-nginx --context kind-tfe -o yaml
+
+   # Check ingress resources
+   kubectl get ingress -n tfe --context kind-tfe
+
+   # Verify nginx loaded tcp-services
+   kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --context kind-tfe | grep -i "tcp\|443"
+   ```
+
+**Important Notes:**
+- TFE service must expose HTTPS port (443)
+- TFE must have TLS certificate from Vault in `terraform-enterprise-certificates` secret
+- The tcp-services ConfigMap configures nginx to passthrough TCP traffic on port 443
+- Only ONE TLS option can be active at a time (termination OR passthrough)
+
+**Switching Between Options:**
+
+To switch from TLS termination to TLS passthrough:
+```bash
+kubectl delete -f tls-termination-ingress.yaml --context kind-tfe
+kubectl apply -f tls-passthrough-ingress.yaml --context kind-tfe
+```
+
+To switch from TLS passthrough to TLS termination:
+```bash
+kubectl delete -f tls-passthrough-ingress.yaml --context kind-tfe
+kubectl apply -f tls-termination-ingress.yaml --context kind-tfe
+```
+
+**Verification (once TFE is running):**
+```bash
+# Add entry to /etc/hosts
+echo "127.0.0.1 tfe.tfe.local" | sudo tee -a /etc/hosts
+
+# Test HTTPS access (should work once TFE is deployed)
+curl -Iv https://tfe.tfe.local
+
+# Should see TFE web UI in browser
+open https://tfe.tfe.local
+```
+
+**Difference Between Options:**
+
+| Feature | TLS Termination | TLS Passthrough |
+|---------|----------------|-----------------|
+| Certificate location | nginx secret | TFE secret |
+| TLS termination | nginx | TFE |
+| Backend protocol | HTTP | HTTPS |
+| End-to-end encryption | No | Yes |
+| Certificate management | nginx + Vault | TFE + Vault |
+| Complexity | Simpler | More complex |
 
 ## Accessing TFE
 

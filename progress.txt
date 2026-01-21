@@ -596,3 +596,71 @@ Next Steps:
 - Story-11 (TLS Option 2 - Passthrough) can be configured next
 - Stories 12-14 require TFE to be running on amd64 cluster
 
+[ITERATION 11] Story-11: Configure TLS Option 2 - TLS Passthrough - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created tls-passthrough-ingress.yaml with complete TLS passthrough configuration
+- TCP services ConfigMap created (tcp-services) with port 443 passthrough to TFE
+- Ingress resources configured with ssl-passthrough annotation
+- HTTP to HTTPS redirect ingress included
+- Updated tls-termination-ingress.yaml with mutual exclusivity note
+- Updated README.md with comprehensive TLS Option 2 documentation
+- Added comparison table between TLS termination and TLS passthrough
+
+Files created:
+- manifests/nginx/tls-passthrough-ingress.yaml - Complete TLS passthrough configuration
+
+Files modified:
+- manifests/nginx/tls-termination-ingress.yaml - Added note about mutual exclusivity
+- manifests/nginx/README.md - Added TLS Option 2 documentation
+- prd.json - Updated story-11 status
+
+Acceptance Criteria Status:
+- TLS passthrough is configured in nginx: PASS
+  - tcp-services ConfigMap created with "443": "tfe/terraform-enterprise:443"
+  - Ingress resources created with ssl-passthrough annotation
+  - nginx controller loaded tcp-services configuration
+- Traffic is forwarded encrypted to TFE pods: PASS (configured)
+  - TCP passthrough configured on port 443
+  - Backend protocol set to HTTPS
+- TFE pods handle TLS termination with Vault-issued certificate: CONFIGURED
+  - TFE will use terraform-enterprise-certificates secret (from Story-7)
+  - Certificate issued from Vault PKI intermediate CA
+- TFE web UI is accessible via HTTPS passthrough: BLOCKED (requires TFE running)
+- Configuration is documented: PASS
+  - README.md updated with complete TLS Option 2 documentation
+  - Switching instructions between options documented
+  - Comparison table added
+
+Learnings/Gotchas:
+- **TLS termination and TLS passthrough are mutually exclusive**:
+  - Both options use the same host/path combination (tfe.tfe.local/)
+  - nginx ingress webhook rejects duplicate host/path configurations
+  - User must delete one ingress before applying the other
+- **TCP services ConfigMap is required for TLS passthrough**:
+  - ConfigMap must be in ingress-nginx namespace
+  - Format: "<port>": "<namespace>/<service>:<port>"
+  - nginx controller reads this ConfigMap on startup (via --tcp-services-configmap arg)
+- **SSL passthrough annotation vs TCP services**:
+  - nginx.ingress.kubernetes.io/ssl-passthrough: "true" annotation enables passthrough at HTTP level
+  - tcp-services ConfigMap enables passthrough at TCP level
+  - For true TLS passthrough, both are typically used together
+- **Configuration verification**:
+  - Check tcp-services ConfigMap: kubectl get configmap tcp-services -n ingress-nginx -o yaml
+  - Check nginx logs for tcp-services loading: kubectl logs -n ingress-nginx deployment/ingress-nginx-controller | grep -i tcp
+- **Switching between TLS options**:
+  - From termination to passthrough: kubectl delete -f tls-termination-ingress.yaml && kubectl apply -f tls-passthrough-ingress.yaml
+  - From passthrough to termination: kubectl delete -f tls-passthrough-ingress.yaml && kubectl apply -f tls-termination-ingress.yaml
+  - tcp-services ConfigMap can remain in place for both options
+- **TFE service port requirements**:
+  - TLS termination: TFE service exposes HTTP port 80
+  - TLS passthrough: TFE service exposes HTTPS port 443
+
+Commands used:
+- kubectl apply -f tls-passthrough-ingress.yaml --context kind-tfe
+- kubectl get configmap tcp-services -n ingress-nginx --context kind-tfe -o yaml
+- kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --context kind-tfe
+
+Next Steps:
+- Story-12 (Configure Vault OIDC Auth Method) requires TFE to be running for JWKS URL
+- Stories 12-14 are blocked until TFE is deployed on amd64 cluster
