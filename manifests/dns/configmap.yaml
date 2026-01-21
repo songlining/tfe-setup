@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dnsmasq-config
+  namespace: dns
+data:
+  dnsmasq.conf: |
+    # Don't read /etc/resolv.conf
+    no-resolv
+
+    # Upstream DNS servers (Google DNS)
+    server=8.8.8.8
+    server=8.8.4.4
+
+    # Log queries for debugging (optional, can be disabled in production)
+    log-queries
+
+    # Don't forward queries for local domains to upstream
+    local=/local/
+
+    # Expand simple hostnames using domain
+    expand-hosts
+    domain=local
+
+    # Cache settings
+    cache-size=1000
+
+    # Don't read /etc/hosts
+    no-hosts
+
+    # Read additional hosts from this file
+    addn-hosts=/etc/dnsmasq.d/hosts
+
+  hosts: |
+    # Internal service DNS entries
+    # These will be updated as services are deployed
+    # Format: IP_ADDRESS  HOSTNAME.local
+
+    # Placeholder entries - will be updated with actual ClusterIPs
+    # TFE service
+    # 10.96.x.x tfe.local
+
+    # MinIO S3 storage
+    # 10.96.x.x minio.local
+
+    # Redis
+    # 10.96.x.x redis.local
+
+    # PostgreSQL
+    # 10.96.x.x postgresql.local
+
+    # Vault
+    # 10.96.x.x vault.local

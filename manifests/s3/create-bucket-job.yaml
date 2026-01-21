@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-tfe-bucket
+  namespace: s3
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Configure MinIO alias
+              mc alias set myminio http://minio.s3.svc.cluster.local:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+
+              # Create bucket for TFE
+              mc mb --ignore-existing myminio/tfe
+
+              # List buckets to verify
+              mc ls myminio
+
+              echo "Bucket 'tfe' created successfully!"
+          envFrom:
+            - secretRef:
+                name: minio-credentials

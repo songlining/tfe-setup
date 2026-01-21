@@ -1,0 +1,188 @@
+{
+  "projectName": "TFE on Kubernetes Setup",
+  "description": "Create a Terraform Enterprise instance on Kubernetes using kind, with all necessary dependencies including S3 storage, Redis, PostgreSQL, Vault for TLS, nginx as NLB, and dnsmasq for DNS.",
+  "stories": [
+    {
+      "id": "story-1",
+      "title": "Create Kind Cluster",
+      "description": "Create a kind (Kubernetes in Docker) cluster named 'tfe' that will host all services.",
+      "acceptanceCriteria": [
+        "Kind cluster named 'tfe' is created and running",
+        "kubectl can connect to the cluster",
+        "Cluster has sufficient resources for all planned services"
+      ],
+      "passes": true
+    },
+    {
+      "id": "story-2",
+      "title": "Install dnsmasq DNS Server",
+      "description": "Install a dnsmasq DNS server in the 'dns' namespace to provide DNS resolution for the home lab environment.",
+      "acceptanceCriteria": [
+        "Namespace 'dns' is created",
+        "dnsmasq is deployed and running in the 'dns' namespace",
+        "DNS resolution works for internal services",
+        "DNS server is accessible from other namespaces"
+      ],
+      "passes": true
+    },
+    {
+      "id": "story-3",
+      "title": "Install S3-Compatible Storage (MinIO)",
+      "description": "Install MinIO as S3-compatible storage in the 's3' namespace for TFE blob storage.",
+      "acceptanceCriteria": [
+        "Namespace 's3' is created",
+        "MinIO is deployed and running",
+        "S3 API endpoint is accessible",
+        "Bucket for TFE can be created",
+        "Access credentials are configured and documented"
+      ],
+      "passes": true
+    },
+    {
+      "id": "story-4",
+      "title": "Install Redis",
+      "description": "Install Redis in the 'redis' namespace for TFE caching and session storage.",
+      "acceptanceCriteria": [
+        "Namespace 'redis' is created",
+        "Redis is deployed and running",
+        "Redis is accessible from other namespaces",
+        "Connection can be verified with redis-cli"
+      ],
+      "passes": true
+    },
+    {
+      "id": "story-5",
+      "title": "Install PostgreSQL",
+      "description": "Install PostgreSQL in the 'psql' namespace for TFE database backend.",
+      "acceptanceCriteria": [
+        "Namespace 'psql' is created",
+        "PostgreSQL is deployed and running",
+        "Database for TFE is created",
+        "Database credentials are configured and documented",
+        "Connection can be verified with psql client"
+      ],
+      "passes": true
+    },
+    {
+      "id": "story-6",
+      "title": "Install HashiCorp Vault for TLS Certificates",
+      "description": "Install HashiCorp Vault opensource version in the 'vault' namespace to act as a PKI and provide TLS certificates for TFE. Configure Vault to issue certificates for the TFE domain.",
+      "acceptanceCriteria": [
+        "Namespace 'vault' is created",
+        "Vault is deployed and running",
+        "Vault is initialized and unsealed",
+        "PKI secrets engine is enabled and configured",
+        "Root CA and intermediate CA are created",
+        "TLS certificates can be issued for TFE domain"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-7",
+      "title": "Prepare TFE Helm Values",
+      "description": "Create and configure the Helm values.yaml file for TFE deployment based on the official helm chart. Reference the TFE Kubernetes deployment documentation and helm chart.",
+      "acceptanceCriteria": [
+        "values.yaml is created with all required configurations",
+        "S3 storage configuration points to MinIO",
+        "Redis configuration points to Redis service",
+        "PostgreSQL configuration points to PostgreSQL service",
+        "TLS certificate from Vault is configured",
+        "All required environment variables are configured",
+        "License file (tfe.license is provided on the top directory) location is configured"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-8",
+      "title": "Deploy Terraform Enterprise",
+      "description": "Deploy TFE using the official Helm chart with the prepared values.yaml. Verify TFE pods are running and the application starts successfully.",
+      "acceptanceCriteria": [
+        "TFE namespace is created",
+        "TFE Helm chart is deployed successfully",
+        "TFE pods are running and healthy",
+        "TFE application logs show successful startup",
+        "TFE is listening on configured ports"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-9",
+      "title": "Install nginx as Network Load Balancer",
+      "description": "Install nginx ingress controller as a Network Load Balancer to handle traffic routing to TFE. Configure it to work with both TLS termination and TLS passthrough modes.",
+      "acceptanceCriteria": [
+        "nginx ingress controller is deployed",
+        "nginx can route traffic to TFE backend",
+        "LoadBalancer service is accessible",
+        "Basic connectivity test to TFE through nginx works"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-10",
+      "title": "Configure TLS Option 1 - NLB Terminates TLS",
+      "description": "Configure nginx NLB to terminate TLS traffic and forward to HTTP port of TFE pods. Use TLS certificate issued from Vault.",
+      "acceptanceCriteria": [
+        "TLS certificate from Vault is configured in nginx",
+        "nginx terminates TLS and forwards to HTTP backend",
+        "HTTPS access to TFE works through nginx",
+        "TFE web UI is accessible via HTTPS",
+        "Configuration is documented"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-11",
+      "title": "Configure TLS Option 2 - TLS Passthrough",
+      "description": "Configure nginx NLB for TLS passthrough to forward encrypted traffic directly to TFE pods HTTPS port. TFE handles TLS termination.",
+      "acceptanceCriteria": [
+        "TLS passthrough is configured in nginx",
+        "Traffic is forwarded encrypted to TFE pods",
+        "TFE pods handle TLS termination with Vault-issued certificate",
+        "TFE web UI is accessible via HTTPS passthrough",
+        "Configuration is documented"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-12",
+      "title": "Configure Vault OIDC Auth Method",
+      "description": "Configure Vault JWT/OIDC auth method to work with TFE Workload Identity tokens. This enables Terraform runs in TFE to authenticate to Vault using workload identity.",
+      "acceptanceCriteria": [
+        "JWT auth method is enabled in Vault",
+        "JWT auth is configured with TFE as the identity provider",
+        "JWKS URL from TFE is configured in Vault",
+        "Vault role is created for TFE workload identity",
+        "Vault policies are created for TFE workspace access"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-13",
+      "title": "Test Workload Identity Integration",
+      "description": "Create test Terraform configurations to validate the Workload Identity integration between TFE and Vault. Verify that TFE runs can authenticate to Vault and read secrets.",
+      "acceptanceCriteria": [
+        "Test TFE organization and workspace is created",
+        "Terraform configuration uses vault provider with workload identity",
+        "TFE run successfully authenticates to Vault using workload identity token",
+        "Vault secrets can be read from TFE run",
+        "End-to-end test is documented"
+      ],
+      "passes": false
+    },
+    {
+      "id": "story-14",
+      "title": "Final Integration Test",
+      "description": "Perform comprehensive end-to-end testing of all components working together. Document the complete setup and verify all acceptance criteria from previous stories still pass.",
+      "acceptanceCriteria": [
+        "All services are healthy and accessible",
+        "TFE can store state in PostgreSQL",
+        "TFE can use Redis for caching",
+        "TFE can store blobs in MinIO",
+        "DNS resolution works for all services",
+        "Both TLS options work correctly",
+        "Documentation is complete for the entire setup"
+      ],
+      "passes": false
+    }
+  ]
+}

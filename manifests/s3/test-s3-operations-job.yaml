@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-s3-operations
+  namespace: s3
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              # Configure MinIO alias
+              mc alias set myminio http://minio.s3.svc.cluster.local:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+
+              # Test upload: create and upload a test file
+              echo "Test content for TFE bucket" > /tmp/test-file.txt
+              mc cp /tmp/test-file.txt myminio/tfe/test-file.txt
+              echo "Upload test: SUCCESS"
+
+              # Test list: verify the file exists
+              mc ls myminio/tfe/
+              echo "List test: SUCCESS"
+
+              # Test download: download the file
+              mc cp myminio/tfe/test-file.txt /tmp/downloaded-file.txt
+              cat /tmp/downloaded-file.txt
+              echo "Download test: SUCCESS"
+
+              # Cleanup: remove test file
+              mc rm myminio/tfe/test-file.txt
+              echo "Cleanup test: SUCCESS"
+
+              echo ""
+              echo "All S3 operations working correctly!"
+          envFrom:
+            - secretRef:
+                name: minio-credentials

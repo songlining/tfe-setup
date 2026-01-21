@@ -1,0 +1,212 @@
+# TFE on Kubernetes Setup - Progress Log
+# ========================================
+# This file tracks the progress of each iteration.
+# Agents MUST append to this file after completing each story.
+# Format: [ITERATION N] Story-X: Title - STATUS
+# Never delete previous entries - this is an append-only log.
+
+[ITERATION 1] Story-1: Create Kind Cluster - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created kind cluster named 'tfe' using a custom cluster configuration
+- Cluster config file: manifests/kind/cluster-config.yaml
+- Configured extra port mappings for nginx ingress (ports 80, 443, 30443)
+- Added node label 'ingress-ready=true' for nginx ingress controller
+
+Verification results:
+- Cluster is running with Kubernetes v1.33.1
+- Node tfe-control-plane is Ready
+- Allocatable resources: 12 CPUs, ~8GB memory, 110 pods capacity
+- All system pods (CoreDNS, etcd, kube-apiserver, etc.) are running
+
+Learnings/Gotchas:
+- Kind v0.29.0 uses kindest/node:v1.33.1 by default
+- Node may take a few seconds to become Ready after cluster creation - use kubectl wait
+- Port mappings must be configured at cluster creation time (cannot be changed later)
+- The cluster config uses kind.x-k8s.io/v1alpha4 API version
+
+Commands used:
+- kind create cluster --config manifests/kind/cluster-config.yaml
+- kubectl cluster-info --context kind-tfe
+- kubectl get nodes --context kind-tfe
+- kubectl describe node tfe-control-plane --context kind-tfe
+
+[ITERATION 2] Story-2: Install dnsmasq DNS Server - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 'dns' namespace for dnsmasq deployment
+- Created ConfigMap (manifests/dns/configmap.yaml) with dnsmasq configuration:
+  - Upstream DNS servers (Google DNS 8.8.8.8 and 8.8.4.4)
+  - Local domain resolution for .local suffix
+  - Query logging enabled for debugging
+  - Additional hosts file for custom DNS entries
+- Created Deployment (manifests/dns/deployment.yaml) using dockurr/dnsmasq:latest image
+- Created ClusterIP Service (manifests/dns/service.yaml) exposing ports 53/UDP and 53/TCP
+- Created Kustomization file (manifests/dns/kustomization.yaml) for easy deployment
+
+Verification results:
+- dnsmasq pod is running (1/1 Ready) in the 'dns' namespace
+- Service has ClusterIP 10.96.83.66 (may vary on re-deployment)
+- DNS resolution works for external domains (google.com, github.com)
+- Service is accessible from other namespaces via dnsmasq.dns.svc.cluster.local
+- Logs show proper query forwarding and caching behavior
+
+Learnings/Gotchas:
+- dnsmasq is NOT meant to replace CoreDNS for Kubernetes internal service discovery
+- dnsmasq purpose: provide custom DNS resolution for .local domains (tfe.local, minio.local, etc.)
+- CoreDNS handles internal K8s service names (*.svc.cluster.local)
+- To query dnsmasq from any namespace, use: dnsmasq.dns.svc.cluster.local
+- The hosts file in ConfigMap can be updated later to add service IP mappings
+- dockurr/dnsmasq:latest image works well for simple dnsmasq deployment
+- NET_ADMIN capability is required for dnsmasq to bind to port 53
+
+Commands used:
+- kubectl create namespace dns --context kind-tfe
+- kubectl apply -k /Users/larry.song/work/hashicorp/tfe-setup/manifests/dns --context kind-tfe
+- kubectl wait --for=condition=available deployment/dnsmasq -n dns --timeout=120s --context kind-tfe
+- kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 --context kind-tfe -- nslookup google.com dnsmasq.dns.svc.cluster.local
+
+[ITERATION 3] Story-3: Install S3-Compatible Storage (MinIO) - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 's3' namespace for MinIO deployment
+- Created Kubernetes manifests in manifests/s3/:
+  - secret.yaml: MinIO root credentials (minioadmin/minioadmin123)
+  - pvc.yaml: 10Gi PersistentVolumeClaim for MinIO data
+  - deployment.yaml: MinIO deployment with health probes
+  - service.yaml: ClusterIP service exposing ports 9000 (API) and 9001 (Console)
+  - kustomization.yaml: Kustomize configuration for easy deployment
+  - create-bucket-job.yaml: Job to create the 'tfe' bucket
+  - test-s3-operations-job.yaml: Job to verify S3 operations
+  - README.md: Documentation for MinIO configuration and credentials
+
+Verification results:
+- Namespace 's3' is created and active
+- MinIO pod is running (1/1 Ready) with health checks passing
+- S3 API endpoint accessible at minio.s3.svc.cluster.local:9000
+- MinIO Console accessible at minio.s3.svc.cluster.local:9001
+- TFE bucket created successfully
+- S3 operations tested: upload, list, download, delete all working
+
+Access Credentials (stored in secret minio-credentials):
+- Access Key: minioadmin
+- Secret Key: minioadmin123
+
+TFE Configuration Reference:
+- Endpoint: http://minio.s3.svc.cluster.local:9000
+- Bucket: tfe
+- Region: us-east-1
+
+Learnings/Gotchas:
+- minio/minio:latest image works well for simple deployments (no Helm chart needed)
+- MinIO requires --console-address flag to enable web console on a separate port
+- Health probes: /minio/health/ready and /minio/health/live endpoints work well
+- When running mc (MinIO client) in a pod, use --command -- /bin/sh -c '...' syntax
+- The PVC uses 'standard' storageClassName which works with kind's local-path-provisioner
+- Jobs with ttlSecondsAfterFinished auto-cleanup completed pods (useful for one-time operations)
+- S3 API returns 400 Bad Request for unauthenticated root requests (this is expected behavior)
+
+Commands used:
+- kubectl create namespace s3 --context kind-tfe --dry-run=client -o yaml | kubectl apply -f -
+- kubectl apply -k /Users/larry.song/work/hashicorp/tfe-setup/manifests/s3 --context kind-tfe
+- kubectl wait --for=condition=available deployment/minio -n s3 --timeout=120s --context kind-tfe
+- kubectl apply -f manifests/s3/create-bucket-job.yaml --context kind-tfe
+- kubectl logs job/create-tfe-bucket -n s3 --context kind-tfe
+
+[ITERATION 4] Story-4: Install Redis - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 'redis' namespace for Redis deployment
+- Created Kubernetes manifests in manifests/redis/:
+  - secret.yaml: Redis password (redispassword123) stored securely
+  - pvc.yaml: 5Gi PersistentVolumeClaim for Redis data persistence
+  - deployment.yaml: Redis 7-alpine deployment with AOF persistence enabled
+  - service.yaml: ClusterIP service exposing port 6379
+  - kustomization.yaml: Kustomize configuration for easy deployment
+- Redis configured with password authentication (--requirepass)
+- AOF persistence enabled (--appendonly yes) for data durability
+
+Verification results:
+- Namespace 'redis' is created and active
+- Redis pod is running (1/1 Ready) with health checks passing
+- Redis service accessible at redis.redis.svc.cluster.local:6379
+- PVC is bound with 5Gi storage
+- Redis logs show successful startup: "Ready to accept connections tcp"
+- PING/PONG test successful from default namespace
+- SET/GET/DEL operations verified working
+- Cross-namespace connectivity confirmed (tested from s3 namespace)
+
+Access Credentials (stored in secret redis-credentials):
+- Password: redispassword123
+
+TFE Configuration Reference:
+- Host: redis.redis.svc.cluster.local
+- Port: 6379
+- Password: redispassword123 (from secret redis-credentials)
+
+Learnings/Gotchas:
+- redis:7-alpine image is lightweight and works well for Kubernetes deployments
+- Password must be passed via --requirepass flag in command args
+- Use $(ENV_VAR) syntax in args to reference environment variables from secrets
+- AOF persistence (appendonly yes) provides better durability than RDB snapshots
+- tcpSocket probes work better than exec probes for Redis health checks
+- The 'standard' storageClassName works with kind's local-path-provisioner (same as MinIO)
+- Redis password warning about -a flag is expected and can be ignored in test contexts
+
+Commands used:
+- kubectl create namespace redis --context kind-tfe --dry-run=client -o yaml | kubectl apply -f -
+- kubectl apply -k /Users/larry.song/work/hashicorp/tfe-setup/manifests/redis --context kind-tfe
+- kubectl wait --for=condition=available deployment/redis -n redis --timeout=120s --context kind-tfe
+- kubectl run redis-test --rm -it --restart=Never --image=redis:7-alpine --context kind-tfe -- redis-cli -h redis.redis.svc.cluster.local -a redispassword123 PING
+
+[ITERATION 5] Story-5: Install PostgreSQL - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 'psql' namespace for PostgreSQL deployment
+- Created Kubernetes manifests in manifests/psql/:
+  - secret.yaml: PostgreSQL credentials (tfe/tfepassword123) with database name 'tfe'
+  - pvc.yaml: 10Gi PersistentVolumeClaim for PostgreSQL data
+  - deployment.yaml: PostgreSQL 15-alpine deployment with health probes (pg_isready)
+  - service.yaml: ClusterIP service exposing port 5432
+  - kustomization.yaml: Kustomize configuration for easy deployment
+- Database 'tfe' is created automatically via POSTGRES_DB environment variable
+- PGDATA set to subdirectory to avoid permission issues with PVC root
+
+Verification results:
+- Namespace 'psql' is created and active
+- PostgreSQL pod is running (1/1 Ready) with health checks passing
+- PostgreSQL service accessible at postgresql.psql.svc.cluster.local:5432
+- PVC is bound with 10Gi storage
+- PostgreSQL logs show: "database system is ready to accept connections"
+- Database 'tfe' exists and is accessible
+- CRUD operations verified (CREATE TABLE, INSERT, SELECT, DROP TABLE)
+- Cross-namespace connectivity confirmed (tested from s3 namespace)
+
+Access Credentials (stored in secret postgresql-credentials):
+- Username: tfe
+- Password: tfepassword123
+- Database: tfe
+
+TFE Configuration Reference:
+- Host: postgresql.psql.svc.cluster.local
+- Port: 5432
+- Database: tfe
+- User: tfe
+- Password: tfepassword123 (from secret postgresql-credentials)
+
+Learnings/Gotchas:
+- postgres:15-alpine image is lightweight and works well for Kubernetes deployments
+- POSTGRES_DB environment variable auto-creates the database during initialization
+- PGDATA must point to a subdirectory (e.g., /var/lib/postgresql/data/pgdata) when using PVC
+  - The PVC root directory may have lost+found or other files that cause issues
+- pg_isready is the proper way to check PostgreSQL health in container probes
+- Use PGPASSWORD environment variable when testing with psql client from pods
+- Use -i flag (not -it) with kubectl run when running non-interactive commands
+- The 'standard' storageClassName works with kind's local-path-provisioner (same as MinIO/Redis)
+
+Commands used:
+- kubectl create namespace psql --context kind-tfe --dry-run=client -o yaml | kubectl apply -f -
+- kubectl apply -k /Users/larry.song/work/hashicorp/tfe-setup/manifests/psql --context kind-tfe
+- kubectl wait --for=condition=available deployment/postgresql -n psql --timeout=120s --context kind-tfe
+- kubectl run psql-test --rm -i --restart=Never --image=postgres:15-alpine --env="PGPASSWORD=tfepassword123" --context kind-tfe -- psql -h postgresql.psql.svc.cluster.local -U tfe -d tfe -c '\l'
+

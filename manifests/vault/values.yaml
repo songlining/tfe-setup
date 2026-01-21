@@ -1,0 +1,68 @@
+# HashiCorp Vault Helm Chart Values
+# Standalone mode for TFE dev/lab environment
+
+global:
+  enabled: true
+  tlsDisable: true  # We'll configure TLS later if needed
+
+server:
+  enabled: true
+
+  # Use standalone mode for simplicity in kind cluster
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "file" {
+        path = "/vault/data"
+      }
+
+  # Resource limits for kind cluster
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # Data persistence
+  dataStorage:
+    enabled: true
+    size: 2Gi
+    storageClass: standard
+
+  # Readiness/Liveness probes
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    initialDelaySeconds: 60
+
+  # Service configuration
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+
+# Enable the UI
+ui:
+  enabled: true
+  serviceType: ClusterIP
+
+# Disable injector for now (not needed for PKI)
+injector:
+  enabled: false
+
+# CSI provider not needed
+csi:
+  enabled: false

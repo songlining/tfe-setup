@@ -1,0 +1,33 @@
+# Kind cluster configuration for TFE setup
+# This configuration creates a cluster with sufficient resources for:
+# - TFE (main application)
+# - MinIO (S3-compatible storage)
+# - Redis (caching)
+# - PostgreSQL (database)
+# - Vault (PKI/TLS)
+# - nginx (load balancer)
+# - dnsmasq (DNS)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: tfe
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # HTTP for nginx ingress
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      # HTTPS for nginx ingress
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+      # Additional port for TFE direct access if needed
+      - containerPort: 30443
+        hostPort: 30443
+        protocol: TCP
