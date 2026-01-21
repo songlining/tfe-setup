@@ -286,3 +286,94 @@ Commands used:
 - kubectl exec -n vault vault-0 --context kind-tfe -- vault status
 - kubectl exec -n vault vault-0 --context kind-tfe -- sh -c 'VAULT_TOKEN=... vault secrets list'
 - kubectl run vault-pki-config --rm -i --restart=Never --image=hashicorp/vault:1.21.2 -- sh -c '...'
+
+[ITERATION 7] Story-7: Prepare TFE Helm Values - COMPLETE
+-------------------------------------------
+What was implemented:
+- Created 'tfe' manifests directory with Helm configuration files
+- Created values.yaml with all required TFE Helm chart configurations:
+  - Image configuration: hashicorp/terraform-enterprise:v202507-1
+  - Resource requests: 4Gi memory, 1000m CPU; limits: 8Gi memory, 2000m CPU
+  - Security context: runAsNonRoot=true, runAsUser=1000, fsGroup=1012
+  - LoadBalancer service configuration with port 443/30443
+- S3 storage configuration pointing to MinIO:
+  - Endpoint: http://minio.s3.svc.cluster.local:9000
+  - Bucket: tfe
+  - Region: us-east-1
+  - Credentials from minio-credentials secret
+- Redis configuration:
+  - Host: redis.redis.svc.cluster.local:6379
+  - Password from redis-credentials secret
+  - Auth enabled, TLS disabled
+- PostgreSQL configuration:
+  - Host: postgresql.psql.svc.cluster.local:5432
+  - Database: tfe, User: tfe
+  - Password from postgresql-credentials secret
+  - SSL mode: disable
+- TLS certificate configuration:
+  - Certificate secret: terraform-enterprise-certificates
+  - Placeholder for Vault-issued certificates
+  - CA cert directory and filename configured
+- Environment variables configured:
+  - TFE_HOSTNAME: tfe.tfe.local
+  - TFE_CAPACITY_CONCENCY: 10
+  - TFE_CAPACITY_CPU: 1000
+  - TFE_CAPACITY_MEMORY: 4096
+  - TFE_IACT_SUBNETS: 0.0.0.0/0
+  - TFE_IACT_TIME_LIMIT: 1209600 (14 days)
+  - TFE_TLS_CIPHERS: secure cipher suite
+- TFE license embedded as base64-encoded secret
+- Created setup-tls-from-vault.sh script to fetch certificates from Vault
+- Created README.md with comprehensive documentation
+
+Files created:
+- manifests/tfe/values.yaml - Main Helm values configuration
+- manifests/tfe/setup-tls-from-vault.sh - TLS certificate setup script
+- manifests/tfe/README.md - Comprehensive documentation
+
+Verification results:
+- values.yaml contains all required Helm chart configurations
+- S3 storage points to MinIO with correct endpoint and credentials
+- Redis points to redis.redis.svc.cluster.local:6379 with authentication
+- PostgreSQL points to postgresql.psql.svc.cluster.local:5432 with database 'tfe'
+- TLS configuration references Vault PKI certificates
+- All required TFE environment variables are configured
+- TFE license is embedded (base64 encoded from /Users/larry.song/work/hashicorp/tfe-setup/tfe.license)
+- setup-tls-from-vault.sh script ready to fetch certificates from Vault PKI
+
+TFE Configuration Reference:
+- Image: hashicorp/terraform-enterprise:v202507-1
+- Hostname: tfe.tfe.local
+- Database: postgresql.psql.svc.cluster.local:5432/tfe (user: tfe)
+- Redis: redis.redis.svc.cluster.local:6379 (password: redispassword123)
+- S3: http://minio.s3.svc.cluster.local:9000 (bucket: tfe)
+- License: Embedded in values.yaml as TFE_LICENSE secret
+
+Learnings/Gotchas:
+- TFE Helm chart requires base64-encoded values for secrets in values.yaml
+- The image tag should match the license version format (vYYYYMM-#)
+- License file must be base64 encoded before embedding in values.yaml
+- For TLS, use Vault PKI intermediate CA to issue certificates with 90-day TTL
+- The terraform-enterprise-certificates secret must contain: cert.pem, key.pem, ca.pem
+- TFE_ENCRYPTION_PASSWORD is required and should be set to a secure value
+- TFE_CAPACITY_CONCENCY (note the typo in the variable name from HashiCorp)
+- Image pull secret 'terraform-enterprise' must be created before Helm install
+- For development, TFE_IACT_SUBNETS can be set to 0.0.0.0/0 (no restriction)
+- The setup-tls-from-vault.sh script automates certificate fetching from Vault
+- For kind clusters, LoadBalancer service type will use port-forwarding or MetalLB
+- PostgreSQL sslmode=disable is acceptable for local kind cluster development
+- TFE uses two sets of env vars: env.variables (ConfigMap) and env.secrets (Secrets)
+
+Commands used:
+- base64 < /path/to/tfe.license - Encode license file
+- kubectl get secret minio-credentials -n s3 -o jsonpath='{.data}'
+- kubectl get secret redis-credentials -n redis -o jsonpath='{.data}'
+- kubectl get secret postgresql-credentials -n psql -o jsonpath='{.data}'
+
+Next Steps (Story-8):
+1. Create TFE namespace: kubectl create namespace tfe
+2. Create image pull secret with license file
+3. Run setup-tls-from-vault.sh to get TLS certificates
+4. Update values.yaml with certificate data (or use secret)
+5. Add HashiCorp Helm repo: helm repo add hashicorp https://helm.releases.hashicorp.com
+6. Install TFE: helm install terraform-enterprise hashicorp/terraform-enterprise -n tfe -f values.yaml

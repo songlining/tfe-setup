@@ -90,7 +90,7 @@
         "All required environment variables are configured",
         "License file (tfe.license is provided on the top directory) location is configured"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "story-8",

@@ -139,9 +139,40 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 
 ### Terraform Enterprise
 - Helm chart: `hashicorp/terraform-enterprise`
-- Requires license file
-- Multiple environment variables for configuration
-- Service type: LoadBalancer
+- **Image**: `images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1`
+- **IMPORTANT**: The image tag format is `vYYYYMM-#` and must match the license version
+- **Image pull secret**: Must create `terraform-enterprise` docker-registry secret using the license file as password
+- **License file**: Must be base64 encoded and embedded in `env.secrets.TFE_LICENSE`
+- **Namespace**: `tfe`
+- **Service type**: LoadBalancer (port 443, nodePort 30443 for kind)
+- **Resource requirements**:
+  - Requests: 4Gi memory, 1000m CPU
+  - Limits: 8Gi memory, 2000m CPU
+- **Security context**: runAsNonRoot=true, runAsUser=1000, fsGroup=1012
+- **Configuration files**:
+  - `manifests/tfe/values.yaml` - Main Helm values
+  - `manifests/tfe/setup-tls-from-vault.sh` - TLS certificate setup script
+
+### TFE Environment Variables
+- **TFE_HOSTNAME**: DNS hostname for TFE (e.g., `tfe.tfe.local`)
+- **TFE_ENCRYPTION_PASSWORD**: Required! Set to a secure value
+- **TFE_CAPACITY_CONCENCY**: Note the typo (CONCENCY vs CONCURRENCY) - this is from HashiCorp
+- **TFE_IACT_SUBNETS**: Which subnets can create IACTs (`0.0.0.0/0` for no restriction)
+- **TFE_IACT_TIME_LIMIT**: IACT expiration time in seconds (1209600 = 14 days)
+- **TFE_DATABASE_PARAMETERS**: Extra database params (e.g., `sslmode=disable`)
+- **Two types of env vars in Helm chart**:
+  - `env.variables`: Non-sensitive values (created as ConfigMap)
+  - `env.secrets`: Sensitive values (created as Kubernetes Secrets)
+
+### TFE TLS Certificate Setup
+- Use Vault PKI intermediate CA to issue certificates
+- Script `setup-tls-from-vault.sh` automates the process:
+  1. Retrieves Vault root token from `vault-keys` secret
+  2. Issues certificate from Vault PKI intermediate CA
+  3. Creates `terraform-enterprise-certificates` secret with cert, key, and CA
+- Secret must contain: `cert.pem`, `key.pem`, `ca.pem`
+- Certificate TTL: 90 days (2160h) recommended
+- Common name should match `TFE_HOSTNAME` (e.g., `tfe.tfe.local`)
 
 ---
 

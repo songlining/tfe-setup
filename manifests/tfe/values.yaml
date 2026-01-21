@@ -1,0 +1,216 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+#
+# TFE Helm Values for Kind Cluster Deployment
+# This file configures Terraform Enterprise for deployment on Kubernetes
+# with local dependencies (MinIO, Redis, PostgreSQL, Vault for TLS)
+
+# Replica count for TFE pods
+replicaCount: 1
+
+# Image pull secret to use for registry authentication
+imagePullSecrets:
+  - name: terraform-enterprise
+
+# Image configuration for Terraform Enterprise
+# Note: The tag should match your license version (format: vYYYYMM-#)
+image:
+  repository: images.releases.hashicorp.com
+  name: hashicorp/terraform-enterprise
+  tag: v202507-1
+  pullPolicy: Always
+
+# Service account configuration
+serviceAccount:
+  enabled: true
+  annotations: {}
+  labels: {}
+
+# Pod configuration
+pod:
+  annotations: {}
+  labels: {}
+
+# Container security context
+container:
+  securityContext: {}
+
+# Resource limits and requests
+resources:
+  requests:
+    memory: "4000Mi"
+    cpu: "1000m"
+  limits:
+    memory: "8000Mi"
+    cpu: "2000m"
+
+# TLS configuration using certificates from Vault
+# NOTE: For production, you should fetch these certificates from Vault
+# and create a Kubernetes secret. For development, we'll configure
+# the chart to use the certificates.
+tls:
+  certificateSecret: terraform-enterprise-certificates
+  caCertBaseDir: /etc/ssl/certs
+  caCertFileName: custom_ca_certs.pem
+  certMountPath: /etc/ssl/private/terraform-enterprise/cert.pem
+  keyMountPath: /etc/ssl/private/terraform-enterprise/key.pem
+  # The actual certificate data should be base64 encoded PEM files
+  # For this deployment, we'll use placeholder values that need to be
+  # populated from Vault PKI
+  certData: ""
+  keyData: ""
+  caCertData: ""
+
+# TFE-specific configuration
+tfe:
+  metrics:
+    enable: false
+    httpPort: 9090
+    httpsPort: 9091
+    privateHttpPort: 8080
+    privateHttpsPort: 8443
+
+# Node selector for pod assignment
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity settings
+affinity: {}
+
+# Topology spread constraints
+topologySpreadConstraints: []
+
+# Security context for the deployment
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1012
+
+# Init containers - could be used to fetch certificates from Vault
+initContainers: null
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: "terraform-enterprise"
+          portNumber: 443
+  tls: []
+
+# Service configuration
+service:
+  annotations: {}
+  type: LoadBalancer
+  port: 443
+  nodePort: 30443
+  loadBalancerIP: null
+
+# Agent worker pod template
+agentWorkerPodTemplate: {}
+
+# OpenShift configuration
+openshift:
+  enabled: false
+
+# Environment configuration
+env:
+  # Reference to external config files (optional)
+  # configFilePath: env-config.yaml
+  # secretsFilePath: env-secrets.yaml
+
+  # References to existing ConfigMaps and Secrets
+  configMapRefs: []
+  secretRefs: []
+
+  # Secret values (these will be created as Kubernetes secrets)
+  # NOTE: These are placeholder values. In production, use external secrets management
+  secrets:
+    # TFE License (base64 encoded)
+    # The license file is at: /Users/larry.song/work/hashicorp/tfe-setup/tfe.license
+    TFE_LICENSE: "MDJNVjRVVTQzQks1SEdZWVRPSlpXRlFNTE1OTkVXVTMzSko1Q0UyNlNPR0pHWFVUS1VLRjJGUzZTR05SR1hTTUJTSlY1RlNOQ01LUkRHUVdMS0lWMkZTMlNGUEpIRUlTSlNKVVpFS01DTk5WS1RDU0xKTzVVVlNNMldQSlNFT09MVUxKTUVVWlRCSzVJV1NUM0pKSldGU1ZDTk81SEVJWVpUTEZVVEMyQzJLUktYUVRDVUtGM1U0VkNKT1JNVEVWVElKVkJUQU0yTlBKTkdTV0tYS1Y1RlNNUzJOTkdYVVFMSkpSQlVVNERDTlpIREFXS1hQQlpWU1dDU09CUkRFTkxHTUZMVkMyS1BORkVYQ1NMSk81VVdDV0NPUEpTRk9WVEdNUkRXWTVDMktORVRNU0xLSkYzVTIyU1ZPUkdWSVJMVUpWS0ZFVktOSVJFVE1UTEtLVTNFMjZTTk9WR1dVV0xZSjVDRVM1Mk9OSlZUQVYzSkpGWlVTM1NPR0JNVlFTUlFMQVpWRTREQ0s1S1dTVDNKSkY0VTJSQ0pHRkdGSVJMWUpSS0VLTUNXSVJBWE9UM0tJRjNVNjJTQk81TFdTU0xUSkZXVk1ORERJNVdIU1dLWUtKWUdFTVJWTVpTRU8zRFVMSkpVU05TSk5KRVhPVExLTEYyRTJWQ0pPUkdWSVVTVkpWQ0VDTlNOSVJBVE1US0VJSlFVUzJMWE5GU0VPVlRaTUpMV1k1S1pMQkpIQVlSU0dWVEdJUjNNT1JORkdTSldKRlZFUzUyTk5KTVhJVEtVSkYyRTJWQ1NLVkdVSVFKV0pWQ0VDTlNOSVJCR0NTTEpPNVVXR1NDS09aTkVRVlRLTVJCVVNOU0pOWkpHWVkzT0pKVUZVM0paUEZSRkdTTFRKRldWVTQyWks1U0hVU0xLT0EzV01XQlFIVVhFQ1UyRElSMkVFTlRTR0ZIQ1dUTFhPUkxITzNLSU5RWldJNkJTTlJRV1dZU0VPTlRWR01EVkhCREdHTUJXS1JGRzZaMlFPNU1VWU5LUEo1NFVRNUpXTjVKSE9RM1JHWk1VVzZDQ09SNUZJTlNHSzVCSFNTQ0xHUjVFMjJURE40MkdLVkRKTU5CREtNTEVJRlZXR1lKVU1STERBTVpUSEJJSE8zS1dOUlFYTVNTUUdSWUVVNkNKSkU0VUlOU1ZJWkdGS1lLV0tCVkdXVjJLT1JSVUlOVFFNRldETTMyUE1aRFc0U1pTUEpJRVdTU1NOVkRVUVZTVE1WTkhPNEtHTVVWVzZOM0xGNVpTV1FLVUpaVUZBV1RIS01YVVdWU1pNNFhVV0szTUk1SUhPVEJYTkpCSFFTSlhJNUhXQzJaV0tWUVdTWUtJTjVTV1dNQ1NLUlhUT01TRUtFNlQy"
+
+    # Database password (from postgresql-credentials secret in psql namespace)
+    # Password: tfepassword123
+    TFE_DATABASE_PASSWORD: "dGZlcGFzc3dvcmQxMjM="
+
+    # S3 credentials (from minio-credentials secret in s3 namespace)
+    # Access Key: minioadmin
+    TFE_OBJECT_STORAGE_S3_ACCESS_KEY_ID: "bWluaW9hZG1pbg=="
+    # Secret Key: minioadmin123
+    TFE_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY: "bWluaW9hZG1pbjEyMw=="
+
+    # Redis password (from redis-credentials secret in redis namespace)
+    # Password: redispassword123
+    TFE_REDIS_PASSWORD: "cmVkaXNwYXNzd29yZDEyMw=="
+
+    # Encryption password for TFE (should be set to a secure value)
+    # IMPORTANT: Change this to a secure value in production!
+    TFE_ENCRYPTION_PASSWORD: "ChangeThisSecurePassword123!"
+
+  # Regular environment variables (these will be created as ConfigMap entries)
+  variables:
+    # TFE hostname - this is the DNS name that will be used to access TFE
+    # For local development, we'll use tfe.local which should resolve
+    # via our dnsmasq service
+    TFE_HOSTNAME: "tfe.tfe.local"
+
+    # TFE Capacity settings
+    TFE_CAPACITY_CONCENCY: "10"
+    TFE_CAPACITY_CPU: "1000"
+    TFE_CAPACITY_MEMORY: "4096"
+
+    # Database configuration
+    # PostgreSQL service in the psql namespace
+    TFE_DATABASE_HOST: "postgresql.psql.svc.cluster.local:5432"
+    TFE_DATABASE_NAME: "tfe"
+    TFE_DATABASE_USER: "tfe"
+    TFE_DATABASE_PARAMETERS: "sslmode=disable"
+
+    # Disk path for local storage
+    TFE_DISK_PATH: "/terraform-enterprise"
+
+    # Object Storage (S3) configuration
+    # Using MinIO in the s3 namespace
+    TFE_OBJECT_STORAGE_TYPE: "s3"
+    TFE_OBJECT_STORAGE_S3_BUCKET: "tfe"
+    TFE_OBJECT_STORAGE_S3_ENDPOINT: "http://minio.s3.svc.cluster.local:9000"
+    TFE_OBJECT_STORAGE_S3_REGION: "us-east-1"
+    TFE_OBJECT_STORAGE_S3_USE_INSTANCE_PROFILE: "false"
+
+    # Redis configuration
+    # Redis service in the redis namespace
+    TFE_REDIS_HOST: "redis.redis.svc.cluster.local:6379"
+    TFE_REDIS_USE_TLS: "false"
+    TFE_REDIS_USE_AUTH: "true"
+
+    # IACT (Interactive Authentication and Authorization Tokens) settings
+    # Limit which subnets can create IACTs (empty means no restriction)
+    TFE_IACT_SUBNETS: "0.0.0.0/0"
+    TFE_IACT_TIME_LIMIT: "1209600"  # 14 days in seconds
+
+    # TLS settings
+    TFE_TLS_CIPHERS: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
+
+    # Run pipeline Kubernetes settings
+    TFE_RUN_PIPELINE_KUBERNETES_DEBUG_ENABLED: "false"
+    TFE_RUN_PIPELINE_KUBERNETES_DEBUG_JOBS_TTL: "86400"
+
+# Agents configuration
+agents:
+  rbac:
+    enabled: true
+  annotations: {}
+  labels: {}
+  namespace:
+    enabled: true
+    annotations: {}
+    labels: {}
