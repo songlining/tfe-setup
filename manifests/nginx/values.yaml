@@ -14,7 +14,11 @@ controller:
     pullPolicy: IfNotPresent
 
   # Use host network for kind clusters (needed for port mappings)
-  hostNetwork: false
+  # This binds nginx directly to ports 80/443 on the node
+  hostNetwork: true
+
+  # Required when hostNetwork is true to avoid port conflicts
+  dnsPolicy: ClusterFirstWithHostNet
 
   # Configure the service as LoadBalancer
   # For kind clusters, this will use port-forwarding
