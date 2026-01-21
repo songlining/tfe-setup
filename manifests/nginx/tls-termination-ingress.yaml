@@ -1,9 +1,20 @@
-# Ingress Resource for TFE - TLS Termination at nginx
-# In this mode, nginx terminates TLS and forwards HTTP traffic to TFE pods
+# Ingress Resource for TFE - TLS Re-encryption Mode
 #
-# This configuration implements Story-10: Configure TLS Option 1 - NLB Terminates TLS
+# In this mode:
+# 1. nginx terminates client-facing TLS using its own certificate (from Vault PKI)
+# 2. nginx re-encrypts traffic to TFE backend using HTTPS (TLS re-encryption)
 #
-# IMPORTANT: This configuration conflicts with TLS Option 2 (passthrough)
+# Why re-encryption instead of termination-to-HTTP?
+# - TFE's internal nginx always redirects HTTP to HTTPS when the Host header matches TFE_HOSTNAME
+# - TFE does not honor X-Forwarded-Proto headers for its redirect logic
+# - Therefore, nginx must connect to TFE's HTTPS port (443 -> 8443)
+#
+# Benefits of this configuration:
+# - nginx can apply its own WAF rules, rate limiting, etc.
+# - nginx serves the edge certificate (can be different from TFE's internal cert)
+# - Traffic inside the cluster is still encrypted (end-to-end TLS)
+#
+# IMPORTANT: This configuration conflicts with TLS passthrough mode
 # - Only ONE option can be active at a time for the same host
 # - To switch to passthrough: kubectl delete -f tls-termination-ingress.yaml
 # - Then: kubectl apply -f tls-passthrough-ingress.yaml
@@ -14,8 +25,10 @@ metadata:
   name: tfe-ingress-termination
   namespace: tfe
   annotations:
-    # Configure nginx backend protocol (HTTP for TLS termination)
-    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    # Configure nginx backend protocol
+    # TFE always serves HTTPS on 8443, so we use HTTPS for backend connection
+    # nginx terminates client TLS and re-encrypts to TFE (TLS re-encryption)
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
 
     # Configure proxy settings for TFE
     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
@@ -39,6 +52,9 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 
+    # X-Forwarded headers are configured at the controller level in nginx values.yaml
+    # (use-forwarded-headers: "true") so TFE knows requests came via HTTPS
+
 spec:
   # Use the nginx ingress class
   ingressClassName: nginx
@@ -59,4 +75,4 @@ spec:
               service:
                 name: terraform-enterprise
                 port:
-                  number: 80  # TFE HTTP port (nginx terminates TLS)
+                  number: 443  # TFE HTTPS port (nginx re-encrypts to backend)

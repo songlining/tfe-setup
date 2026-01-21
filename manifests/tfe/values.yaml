@@ -120,6 +120,9 @@ service:
   port: 443
   nodePort: 30443
   loadBalancerIP: null
+  # Note: TFE always serves HTTPS, even behind a reverse proxy
+  # The HTTP port (8080) is for internal health checks only
+  # For TLS re-encryption mode, nginx connects to port 443 (-> 8443)
 
 # Agent worker pod template
 agentWorkerPodTemplate: {}
