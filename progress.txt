@@ -210,3 +210,79 @@ Commands used:
 - kubectl wait --for=condition=available deployment/postgresql -n psql --timeout=120s --context kind-tfe
 - kubectl run psql-test --rm -i --restart=Never --image=postgres:15-alpine --env="PGPASSWORD=tfepassword123" --context kind-tfe -- psql -h postgresql.psql.svc.cluster.local -U tfe -d tfe -c '\l'
 
+
+[ITERATION 6] Story-6: Install HashiCorp Vault for TLS Certificates - COMPLETE
+-------------------------------------------
+What was implemented:
+- Namespace 'vault' already created and active
+- Vault deployed using Helm chart (hashicorp/vault) in standalone mode
+- Vault configured with 2Gi PVC for data persistence using 'standard' storageClass
+- Vault initialized and unsealed (shares=1, threshold=1 for dev environment)
+- PKI secrets engine enabled at 'pki/' (Root CA) path
+- Root CA generated with:
+  - Common Name: "TFE Root CA"
+  - Organization: "HashiCorp TFE Lab"
+  - TTL: 87600h (10 years)
+  - Key size: 4096-bit RSA
+- Intermediate CA created at 'pki_int/' path:
+  - Common Name: "TFE Intermediate CA"
+  - Generated CSR, signed by Root CA, and imported back
+  - TTL: 43800h (5 years)
+  - Key size: 4096-bit RSA
+- PKI role 'tfe-cert' configured for certificate issuance:
+  - Allowed domains: tfe.local
+  - Allow subdomains: true
+  - Allow bare domains: true
+  - Max TTL: 720h (30 days)
+  - Default TTL: 24h
+- Created configure-vault-pki.sh script for reproducible setup
+
+Verification results:
+- Vault pod running: vault-0 (1/1 Ready)
+- Vault status: Initialized=true, Sealed=false
+- Root CA certificate verified and accessible
+- Intermediate CA certificate verified and accessible
+- Certificate issuance tested: successfully issued cert for tfe.tfe.local
+- All CRL and issuing certificate URLs configured properly
+
+Access Credentials (stored in secret vault-credentials):
+- Root Token: hvs.1MmdQ3PhmwE9SnX309vLwEj2
+- Unseal Key: 3k6WXVbFLuGKNNIa45qmjsHHouaH6pCGnVZi+dr0tl0=
+
+Vault Configuration Reference:
+- Endpoint: http://vault.vault.svc.cluster.local:8200
+- UI: http://vault-ui.vault.svc.cluster.local:8200
+- Root CA Path: pki/
+- Intermediate CA Path: pki_int/
+- Certificate Role: pki_int/roles/tfe-cert
+
+Certificate Issuance Commands:
+# Issue certificate for TFE:
+vault write pki_int/issue/tfe-cert common_name="tfe.tfe.local" ttl=24h
+
+# Get Root CA certificate:
+vault read pki/cert/ca
+
+# Get Intermediate CA certificate:
+vault read pki_int/cert/ca
+
+Learnings/Gotchas:
+- Vault Helm chart uses StatefulSet, which creates pods with ordinal suffix (vault-0, vault-1, etc.)
+- For standalone mode (non-HA), only vault-0 pod is created
+- The vault-keys secret was pre-created with unseal key and root token
+- PKI intermediate CA setup requires:
+  1. Generate intermediate CSR
+  2. Sign the CSR with Root CA
+  3. Import the signed certificate back into intermediate CA
+- The 'region' parameter in vault write commands produces a warning but doesn't affect functionality
+- When running vault CLI in pods, use 'sh -c' wrapper to run multiple commands and handle environment variables
+- hashicorp/vault:1.21.2 image includes jq, but need 'apk add jq' for some operations
+- Vault PKI URLs need to point to the Kubernetes service FQDN for in-cluster access
+- Certificate chains are returned automatically when issuing from intermediate CA
+- Testing certificate issuance is critical to verify the entire PKI chain works end-to-end
+
+Commands used:
+- kubectl get pods -n vault --context kind-tfe
+- kubectl exec -n vault vault-0 --context kind-tfe -- vault status
+- kubectl exec -n vault vault-0 --context kind-tfe -- sh -c 'VAULT_TOKEN=... vault secrets list'
+- kubectl run vault-pki-config --rm -i --restart=Never --image=hashicorp/vault:1.21.2 -- sh -c '...'

@@ -75,7 +75,7 @@
         "Root CA and intermediate CA are created",
         "TLS certificates can be issued for TFE domain"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "story-7",

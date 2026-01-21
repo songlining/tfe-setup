@@ -112,6 +112,24 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 - Dev mode is NOT recommended for TLS cert generation
 - PKI secrets engine required for certificate generation
 - OIDC auth method required for Workload Identity
+- **Endpoint**: `vault.vault.svc.cluster.local:8200`
+- **Credentials**: Stored in secret `vault-keys` in namespace `vault`
+  - Root Token: `hvs.1MmdQ3PhmwE9SnX309vLwEj2`
+  - Unseal Key: `3k6WXVbFLuGKNNIa45qmjsHHouaH6pCGnVZi+dr0tl0=`
+- **Standalone mode**: Uses StatefulSet, creates vault-0 pod (only one pod for non-HA)
+- **PKI Configuration**:
+  - Root CA path: `pki/` (10-year TTL, 4096-bit RSA)
+  - Intermediate CA path: `pki_int/` (5-year TTL, 4096-bit RSA)
+  - Certificate role: `pki_int/roles/tfe-cert` for tfe.local domain
+  - Max TTL: 720h (30 days), Default TTL: 24h
+- **Intermediate CA Setup Process**:
+  1. Generate intermediate CSR
+  2. Sign CSR with Root CA
+  3. Import signed certificate back into intermediate CA
+- When running vault CLI in pods, use `sh -c` wrapper and set VAULT_TOKEN environment variable
+- hashicorp/vault:1.21.2 image includes jq, but `apk add jq` may be needed for some operations
+- The 'region' parameter in vault write commands produces a warning but doesn't affect functionality
+- Certificate chains are returned automatically when issuing from intermediate CA
 
 ### nginx Ingress Controller
 - Helm chart: `ingress-nginx/ingress-nginx`
