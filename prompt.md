@@ -97,6 +97,17 @@ This project uses the Ralph Loop autonomous agent iteration system. Each agent i
      ```
    - Update `AGENTS.md` if new patterns or gotchas discovered
 
+6. **Git Commit Phase (REQUIRED)**
+   - Commit all changes after completing a story:
+     ```bash
+     git add -A && git commit -m "Complete story-X: <title>
+
+     <brief description of changes>
+
+     Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+     ```
+   - Each story should have its own commit for easy tracking
+
 ### File Organization
 
 Store configuration files in organized directories:

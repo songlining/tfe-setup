@@ -61,6 +61,12 @@ check_prerequisites() {
         exit 1
     fi
 
+    # Check if git repo exists
+    if [ ! -d ".git" ]; then
+        error "Not a git repository. Please run 'git init' first."
+        exit 1
+    fi
+
     success "All prerequisites met."
 }
 
@@ -108,6 +114,12 @@ Your task for this iteration:
    - Issues encountered and solutions
 
 6. Update AGENTS.md if you discovered new patterns or gotchas
+7. REQUIRED: Commit your changes to git with a descriptive message:
+   git add -A && git commit -m \"Complete story-X: <title>
+
+   <brief description of changes>
+
+   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\"
 
 IMPORTANT RULES:
 - Only mark a story as complete when ALL acceptance criteria are met
@@ -115,6 +127,7 @@ IMPORTANT RULES:
 - If you encounter errors, fix them before proceeding
 - Document everything you learn in progress.txt
 - Update AGENTS.md with new patterns you discover
+- ALWAYS commit changes to git after completing a story
 
 Current story to implement:
 $story_info
