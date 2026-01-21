@@ -103,7 +103,8 @@
         "TFE application logs show successful startup",
         "TFE is listening on configured ports"
       ],
-      "passes": false
+      "passes": true,
+      "notes": "TFE deployed via Helm chart with amd64 image pre-loaded into kind cluster using 'docker save | ctr import'. Image tagged as v202507-1-amd64. Certificate secret created from Vault PKI with tls.crt/tls.key keys. Pod running with 1/1 ready status. Health check returns OK, HTTPS endpoints responding on port 443. Logs show 'TFE is now ready to use. Happy Terraforming!'"
     },
     {
       "id": "story-9",

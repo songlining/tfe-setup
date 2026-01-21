@@ -17,8 +17,12 @@ imagePullSecrets:
 image:
   repository: images.releases.hashicorp.com
   name: hashicorp/terraform-enterprise
-  tag: v202507-1
-  pullPolicy: Always
+  # Use amd64-specific tag that was pre-loaded into kind via ctr import
+  # The original v202507-1 is a multi-arch manifest that doesn't include arm64
+  # On Apple Silicon, this runs via QEMU binfmt emulation
+  tag: v202507-1-amd64
+  # Use Never since image is pre-loaded into kind's containerd
+  pullPolicy: Never
 
 # Service account configuration
 serviceAccount:
@@ -36,12 +40,14 @@ container:
   securityContext: {}
 
 # Resource limits and requests
+# Reduced for kind cluster with limited resources
+# Note: This may cause performance issues for larger TFE workloads
 resources:
   requests:
-    memory: "4000Mi"
-    cpu: "1000m"
+    memory: "2000Mi"
+    cpu: "500m"
   limits:
-    memory: "8000Mi"
+    memory: "4000Mi"
     cpu: "2000m"
 
 # TLS configuration using certificates from Vault
@@ -77,24 +83,18 @@ nodeSelector: {}
 tolerations: []
 
 # Affinity settings
-affinity:
-  nodeAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      nodeSelectorTerms:
-      - matchExpressions:
-        - key: kubernetes.io/arch
-          operator: In
-          values: ["arm64"]
+# Note: No nodeAffinity constraint for architecture since the amd64 image
+# runs via QEMU emulation on arm64 nodes (Apple Silicon)
+affinity: {}
 
 # Topology spread constraints
 topologySpreadConstraints: []
 
 # Security context for the deployment
+# TFE requires specific permissions to write to log directories and set file permissions
+# Using fsGroup to ensure volume mounts are writable by the TFE process
 securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1012
+  fsGroup: 1000
 
 # Init containers - could be used to fetch certificates from Vault
 initContainers: null
@@ -141,23 +141,19 @@ env:
   # Secret values (these will be created as Kubernetes secrets)
   # NOTE: These are placeholder values. In production, use external secrets management
   secrets:
-    # TFE License (base64 encoded)
+    # TFE License - raw value (Helm chart will base64 encode)
     # The license file is at: /Users/larry.song/work/hashicorp/tfe-setup/tfe.license
-    TFE_LICENSE: "MDJNVjRVVTQzQks1SEdZWVRPSlpXRlFNTE1OTkVXVTMzSko1Q0UyNlNPR0pHWFVUS1VLRjJGUzZTR05SR1hTTUJTSlY1RlNOQ01LUkRHUVdMS0lWMkZTMlNGUEpIRUlTSlNKVVpFS01DTk5WS1RDU0xKTzVVVlNNMldQSlNFT09MVUxKTUVVWlRCSzVJV1NUM0pKSldGU1ZDTk81SEVJWVpUTEZVVEMyQzJLUktYUVRDVUtGM1U0VkNKT1JNVEVWVElKVkJUQU0yTlBKTkdTV0tYS1Y1RlNNUzJOTkdYVVFMSkpSQlVVNERDTlpIREFXS1hQQlpWU1dDU09CUkRFTkxHTUZMVkMyS1BORkVYQ1NMSk81VVdDV0NPUEpTRk9WVEdNUkRXWTVDMktORVRNU0xLSkYzVTIyU1ZPUkdWSVJMVUpWS0ZFVktOSVJFVE1UTEtLVTNFMjZTTk9WR1dVV0xZSjVDRVM1Mk9OSlZUQVYzSkpGWlVTM1NPR0JNVlFTUlFMQVpWRTREQ0s1S1dTVDNKSkY0VTJSQ0pHRkdGSVJMWUpSS0VLTUNXSVJBWE9UM0tJRjNVNjJTQk81TFdTU0xUSkZXVk1ORERJNVdIU1dLWUtKWUdFTVJWTVpTRU8zRFVMSkpVU05TSk5KRVhPVExLTEYyRTJWQ0pPUkdWSVVTVkpWQ0VDTlNOSVJBVE1US0VJSlFVUzJMWE5GU0VPVlRaTUpMV1k1S1pMQkpIQVlSU0dWVEdJUjNNT1JORkdTSldKRlZFUzUyTk5KTVhJVEtVSkYyRTJWQ1NLVkdVSVFKV0pWQ0VDTlNOSVJCR0NTTEpPNVVXR1NDS09aTkVRVlRLTVJCVVNOU0pOWkpHWVkzT0pKVUZVM0paUEZSRkdTTFRKRldWVTQyWks1U0hVU0xLT0EzV01XQlFIVVhFQ1UyRElSMkVFTlRTR0ZIQ1dUTFhPUkxITzNLSU5RWldJNkJTTlJRV1dZU0VPTlRWR01EVkhCREdHTUJXS1JGRzZaMlFPNU1VWU5LUEo1NFVRNUpXTjVKSE9RM1JHWk1VVzZDQ09SNUZJTlNHSzVCSFNTQ0xHUjVFMjJURE40MkdLVkRKTU5CREtNTEVJRlZXR1lKVU1STERBTVpUSEJJSE8zS1dOUlFYTVNTUUdSWUVVNkNKSkU0VUlOU1ZJWkdGS1lLV0tCVkdXVjJLT1JSVUlOVFFNRldETTMyUE1aRFc0U1pTUEpJRVdTU1NOVkRVUVZTVE1WTkhPNEtHTVVWVzZOM0xGNVpTV1FLVUpaVUZBV1RIS01YVVdWU1pNNFhVV0szTUk1SUhPVEJYTkpCSFFTSlhJNUhXQzJaV0tWUVdTWUtJTjVTV1dNQ1NLUlhUT01TRUtFNlQy"
+    TFE_LICENSE: ""
 
     # Database password (from postgresql-credentials secret in psql namespace)
-    # Password: tfepassword123
-    TFE_DATABASE_PASSWORD: "dGZlcGFzc3dvcmQxMjM="
+    TFE_DATABASE_PASSWORD: "tfepassword123"
 
     # S3 credentials (from minio-credentials secret in s3 namespace)
-    # Access Key: minioadmin
-    TFE_OBJECT_STORAGE_S3_ACCESS_KEY_ID: "bWluaW9hZG1pbg=="
-    # Secret Key: minioadmin123
-    TFE_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY: "bWluaW9hZG1pbjEyMw=="
+    TFE_OBJECT_STORAGE_S3_ACCESS_KEY_ID: "minioadmin"
+    TFE_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY: "minioadmin123"
 
     # Redis password (from redis-credentials secret in redis namespace)
-    # Password: redispassword123
-    TFE_REDIS_PASSWORD: "cmVkaXNwYXNzd29yZDEyMw=="
+    TFE_REDIS_PASSWORD: "redispassword123"
 
     # Encryption password for TFE (should be set to a secure value)
     # IMPORTANT: Change this to a secure value in production!

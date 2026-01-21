@@ -892,3 +892,69 @@ Commands used:
 - kubectl run s3-test --rm -i --restart=Never --image=minio/mc:latest --command -- /bin/sh -c 'mc alias set minio http://minio.s3.svc.cluster.local:9000 minioadmin minioadmin123 && mc ls minio/tfe' (test MinIO)
 - kubectl exec -n vault vault-0 -- vault status (test Vault)
 - kubectl run dns-test --rm -i --restart=Never --image=busybox:1.36 -- nslookup google.com dnsmasq.dns.svc.cluster.local (test DNS)
+
+[ITERATION 15] Story-8: Deploy Terraform Enterprise - COMPLETE
+-------------------------------------------
+What was implemented:
+- Successfully deployed TFE on Apple Silicon (arm64) kind cluster using QEMU binfmt emulation
+- Pre-loaded amd64 TFE image into kind's containerd using `docker save | ctr import`
+- Created image pull secret 'terraform-enterprise' using license file
+- Fixed TLS certificate secret with correct key names (tls.crt, tls.key for Helm chart)
+- Fixed values.yaml to use raw values instead of base64 (Helm chart encodes them)
+- Reduced memory requirements for kind cluster (2Gi request, 4Gi limit)
+- TFE pod running with 1/1 Ready status
+
+Key Configuration Changes:
+- Image tag: v202507-1-amd64 (pre-loaded into kind via ctr import)
+- Image pullPolicy: Never (image already in containerd)
+- Memory request: 2000Mi (reduced from 4000Mi for kind cluster)
+- Memory limit: 4000Mi (reduced from 8000Mi)
+- Security context: fsGroup=1000 (simplified from previous complex context)
+- Affinity: Empty (removed arm64 nodeAffinity constraint)
+
+TLS Certificate Setup:
+- Certificate issued from Vault PKI intermediate CA (pki_int/issue/tfe-cert)
+- Certificate valid for CN=tfe.tfe.local until Feb 20, 2026
+- Secret keys: tls.crt, tls.key, ca.crt, cert.pem, key.pem, ca.pem (both naming conventions)
+- PEM format verified: correct headers (-----BEGIN CERTIFICATE-----, -----BEGIN RSA PRIVATE KEY-----)
+
+Verification Results:
+- TFE namespace: PASS (created and active)
+- Helm chart deployed: PASS (revision 7, status deployed)
+- TFE pods healthy: PASS (1/1 Ready)
+- Startup logs: PASS ("TFE is now ready to use. Happy Terraforming!")
+- Port 443 HTTPS: PASS (responding with 301 redirect)
+- Health check: PASS (returns "OK" via HTTPS)
+
+Files Modified:
+- manifests/tfe/values.yaml - Updated image tag, pullPolicy, resources, security context, credentials
+- prd.json - Updated story-8 passes=true with notes
+
+Learnings/Gotchas:
+- **amd64 images CAN run on arm64 kind cluster** via QEMU emulation, but requires manual image loading:
+  1. Pull amd64 manifest by digest: `docker pull --platform linux/amd64 <image>@sha256:<digest>`
+  2. Tag with unique suffix: `docker tag <image>@sha256:<digest> <image>:v202507-1-amd64`
+  3. Load into kind containerd: `docker save <image>:tag | docker exec -i <node> ctr --namespace k8s.io images import -`
+  4. Set pullPolicy: Never in values.yaml
+- **Helm chart secrets are base64-encoded by the chart**: Do NOT pre-encode secrets in values.yaml
+- **TLS certificate format matters**: PEM headers must have proper spacing (-----BEGIN CERTIFICATE-----) not (-----BEGINCERTIFICATE-----)
+- **TLS secret key names**: Helm chart expects 'tls.crt' and 'tls.key', not 'cert.pem' and 'key.pem'
+- **Memory constraints in kind**: Default TFE memory (4Gi request) may exceed available memory in kind cluster
+- **Vault certificate extraction**: Use awk to properly parse multi-line PEM blocks from vault write output
+- **Multiple ReplicaSets during Helm upgrades**: Old pods may persist; delete manually if needed
+
+Commands Used:
+- docker pull --platform linux/amd64 images.releases.hashicorp.com/hashicorp/terraform-enterprise@sha256:52a31756294d92ffb0e50dba044f00a06ecc46c0fd61c68d47db7f926f95ed8f
+- docker tag <digest> images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1-amd64
+- docker save <image> | docker exec -i tfe-control-plane ctr --namespace k8s.io images import -
+- kubectl create secret docker-registry terraform-enterprise --docker-server=images.releases.hashicorp.com --docker-username=terraform --docker-password="$(cat tfe.license)" -n tfe
+- helm install/upgrade terraform-enterprise hashicorp/terraform-enterprise -n tfe -f values.yaml
+- kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl:latest -- -k -s https://terraform-enterprise.tfe.svc.cluster.local/_health_check
+
+Acceptance Criteria Status:
+- TFE namespace is created: PASS
+- TFE Helm chart is deployed successfully: PASS
+- TFE pods are running and healthy: PASS (1/1 Ready)
+- TFE application logs show successful startup: PASS ("Happy Terraforming!")
+- TFE is listening on configured ports: PASS (443 HTTPS, health check responding)
+

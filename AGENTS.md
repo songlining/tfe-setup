@@ -197,28 +197,64 @@ helm upgrade --install <release-name> <chart> -n <namespace> -f values.yaml
 - **Image**: `images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1`
 - **Architecture Requirement**: TFE images are **ONLY available for amd64** architecture
   - HashiCorp does NOT provide arm64 images for TFE
-  - **On Apple Silicon with Docker Desktop**: TFE CAN run via QEMU binfmt emulation
-    - Docker Desktop automatically includes QEMU handlers for multi-platform emulation
-    - Use ARM64 affinity in values.yaml to schedule on arm64 nodes
-    - The amd64 TFE image will be emulated transparently (~20-30% overhead)
-    - This is the recommended approach for development/testing on Apple Silicon
+  - **On Apple Silicon with kind**: TFE CAN run via QEMU binfmt emulation
+    - Requires pre-loading amd64 image into kind's containerd (see below)
+    - Uses QEMU emulation transparently (performance overhead ~20-30%)
+    - This approach is recommended for development/testing on Apple Silicon
   - Alternative options for production:
     - A cloud-based Kubernetes cluster with amd64 nodes (EKS, GKE, AKS, etc.)
     - A VM-based local cluster (minikube/docker-desktop with amd64 nodes)
     - Colima or Lima with amd64 architecture explicitly set
-  - **Configuration**: Use `affinity.nodeAffinity` with `values: ["arm64"]` to schedule on arm64 nodes with QEMU emulation
+
+**Loading amd64 TFE Image into kind on Apple Silicon**:
+```bash
+# 1. Get the amd64 image manifest digest
+docker manifest inspect images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1 | jq '.manifests[] | select(.platform.architecture=="amd64") | .digest'
+
+# 2. Pull by digest with platform flag
+docker pull --platform linux/amd64 images.releases.hashicorp.com/hashicorp/terraform-enterprise@sha256:<digest>
+
+# 3. Tag with unique suffix for kind
+docker tag images.releases.hashicorp.com/hashicorp/terraform-enterprise@sha256:<digest> \
+  images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1-amd64
+
+# 4. Load into kind's containerd (NOT using kind load docker-image - that doesn't work for cross-arch)
+docker save images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202507-1-amd64 | \
+  docker exec -i tfe-control-plane ctr --namespace k8s.io images import -
+
+# 5. Verify image is loaded
+docker exec tfe-control-plane ctr --namespace k8s.io images list | grep terraform-enterprise
+
+# 6. Update values.yaml
+#    - tag: v202507-1-amd64
+#    - pullPolicy: Never
+```
+
 - **IMPORTANT**: The image tag format is `vYYYYMM-#` and must match the license version
 - **Image pull secret**: Must create `terraform-enterprise` docker-registry secret using the license file as password
-- **License file**: Must be base64 encoded and embedded in `env.secrets.TFE_LICENSE`
+- **License file**: Must be provided as RAW value in `env.secrets.TFE_LICENSE` (Helm chart base64-encodes it)
 - **Namespace**: `tfe`
 - **Service type**: LoadBalancer (port 443, nodePort 30443 for kind)
-- **Resource requirements**:
-  - Requests: 4Gi memory, 1000m CPU
-  - Limits: 8Gi memory, 2000m CPU
-- **Security context**: runAsNonRoot=true, runAsUser=1000, fsGroup=1012
+- **Resource requirements** (for kind cluster):
+  - Requests: 2Gi memory, 500m CPU (reduced from defaults for kind)
+  - Limits: 4Gi memory, 2000m CPU
+- **Security context**: fsGroup=1000 (simplified; TFE handles user switching internally)
 - **Configuration files**:
   - `manifests/tfe/values.yaml` - Main Helm values
   - `manifests/tfe/setup-tls-from-vault.sh` - TLS certificate setup script
+
+**TLS Certificate Secret Requirements**:
+- Secret name: `terraform-enterprise-certificates`
+- Required keys: `tls.crt`, `tls.key` (the Helm chart expects these names)
+- Also add: `cert.pem`, `key.pem`, `ca.pem` for compatibility
+- PEM format must have proper headers with spaces: `-----BEGIN CERTIFICATE-----`
+- **IMPORTANT**: Do NOT use `kind load docker-image` for cross-platform images - it doesn't work
+- Use `docker save | ctr import` instead to load images directly into containerd
+
+**Helm Values Secrets Gotcha**:
+- `env.secrets` values should be RAW, not base64-encoded
+- The Helm chart base64-encodes the values before creating the Kubernetes secret
+- If you pre-encode them, they get double-encoded and TFE fails to read them
 
 ### TFE Environment Variables
 - **TFE_HOSTNAME**: DNS hostname for TFE (e.g., `tfe.tfe.local`)
